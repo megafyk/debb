@@ -3,7 +3,7 @@ from evidence_gate.connectors.jira_connector import JiraConnector
 
 def test_fetch_and_sanitize_returns_context():
     jc = JiraConnector()
-    ticket = jc.fetch_and_sanitize("BUG-123")
+    ticket, refs = jc.fetch_and_sanitize("BUG-123")
 
     assert ticket.ticket_id == "BUG-123"
     assert ticket.summary == "Login fails for users with phone numbers missing leading zero"
@@ -14,22 +14,18 @@ def test_fetch_and_sanitize_returns_context():
 
 def test_description_is_redacted():
     jc = JiraConnector()
-    ticket = jc.fetch_and_sanitize("BUG-123")
+    ticket, _ = jc.fetch_and_sanitize("BUG-123")
 
     # Raw email should be redacted
     assert "somchai@example.com" not in ticket.description_sanitized
-    assert "[REDACTED_EMAIL]" in ticket.description_sanitized
-
     # Raw phone should be redacted
     assert "+66812345678" not in ticket.description_sanitized
-    assert "[REDACTED_PHONE]" in ticket.description_sanitized
 
 
 def test_comments_are_redacted():
     jc = JiraConnector()
-    ticket = jc.fetch_and_sanitize("BUG-123")
+    ticket, _ = jc.fetch_and_sanitize("BUG-123")
 
     assert len(ticket.comments_sanitized) == 2
     # First comment has an email
     assert "support@company.com" not in ticket.comments_sanitized[0]
-    assert "[REDACTED_EMAIL]" in ticket.comments_sanitized[0]

@@ -1,0 +1,24 @@
+# Report Quality Rules
+
+## Required sections
+Every debug report must include all sections from `templates/debug_report.md`.
+
+## Citation requirements
+- Every factual claim must cite an evidence ID, code path, or audit ref.
+- Hypotheses must reference the evidence that supports or refutes them.
+
+## Confidence calibration
+- **High**: Multiple independent evidence sources converge on the same cause.
+- **Medium**: Code analysis and one evidence source align, but gaps remain.
+- **Low**: Hypothesis is consistent with available evidence but unverified.
+
+## Language rules
+- Use "most likely root cause", not "the root cause" or "proven cause".
+- Use "evidence suggests", not "evidence proves".
+- Always include "Required Engineer Verification Steps".
+
+## Safety checks before submission
+- No raw phone numbers, emails, names, account IDs
+- No credentials, tokens, auth headers
+- No raw log lines or DB rows
+- All evidence IDs are valid references

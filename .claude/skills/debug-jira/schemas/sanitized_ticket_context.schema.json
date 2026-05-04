@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SanitizedTicketContext",
+  "type": "object",
+  "required": ["ticket_id", "summary", "issue_type", "priority", "status"],
+  "properties": {
+    "ticket_id": { "type": "string" },
+    "summary": { "type": "string" },
+    "issue_type": { "type": "string" },
+    "priority": { "type": "string" },
+    "status": { "type": "string" },
+    "labels": { "type": "array", "items": { "type": "string" } },
+    "components": { "type": "array", "items": { "type": "string" } },
+    "description_sanitized": { "type": "string" },
+    "comments_sanitized": { "type": "array", "items": { "type": "string" } },
+    "created": { "type": "string", "format": "date-time" },
+    "updated": { "type": "string", "format": "date-time" },
+    "issue_links": { "type": "array", "items": { "type": "object" } },
+    "subtasks": { "type": "array", "items": { "type": "string" } }
+  }
+}

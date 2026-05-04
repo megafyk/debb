@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MetabaseQueryPlan",
+  "type": "object",
+  "required": ["type", "evidence_session_id", "service", "entity", "query_intent", "facts_requested"],
+  "properties": {
+    "type": { "type": "string", "const": "metabase_query_plan" },
+    "evidence_session_id": { "type": "string" },
+    "service": { "type": "string" },
+    "repository": { "type": "string" },
+    "code_paths": { "type": "array", "items": { "type": "string" } },
+    "entity": { "type": "string" },
+    "query_intent": { "type": "string" },
+    "sql_candidate": { "type": "string" },
+    "params": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "value_ref": { "type": "string" },
+          "source": { "type": "string" },
+          "sensitive": { "type": "boolean" }
+        }
+      }
+    },
+    "facts_requested": { "type": "array", "items": { "type": "string" } },
+    "output_profile": { "type": "string" }
+  }
+}

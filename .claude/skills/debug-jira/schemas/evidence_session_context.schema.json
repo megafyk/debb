@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EvidenceSessionContext",
+  "type": "object",
+  "required": ["evidence_session_id", "ticket_id", "trace_id", "sanitized_ticket", "sensitive_refs"],
+  "properties": {
+    "evidence_session_id": { "type": "string" },
+    "ticket_id": { "type": "string" },
+    "trace_id": { "type": "string" },
+    "sanitized_ticket": { "$ref": "sanitized_ticket_context.schema.json" },
+    "sensitive_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["value_ref", "field_type"],
+        "properties": {
+          "value_ref": { "type": "string" },
+          "field_type": { "type": "string" },
+          "semantic_features": { "type": "object" }
+        }
+      }
+    },
+    "source_refs": { "type": "array", "items": { "type": "string" } },
+    "audit_refs": { "type": "array", "items": { "type": "string" } }
+  }
+}

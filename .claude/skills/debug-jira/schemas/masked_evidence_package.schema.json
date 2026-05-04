@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MaskedEvidencePackage",
+  "type": "object",
+  "required": ["evidence_id", "evidence_session_id", "source_type", "masked_data"],
+  "properties": {
+    "evidence_id": { "type": "string" },
+    "evidence_session_id": { "type": "string" },
+    "evidence_request_id": { "type": "string" },
+    "source_type": { "type": "string", "enum": ["quickwit_logs", "metabase_query", "jira_ticket"] },
+    "output_profile": { "type": "string" },
+    "masked_data": { "type": "object" },
+    "diagnostic_features": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field": { "type": "string" },
+          "subject_token": { "type": "string" },
+          "features": { "type": "object" }
+        }
+      }
+    },
+    "audit_ref": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" }
+  }
+}

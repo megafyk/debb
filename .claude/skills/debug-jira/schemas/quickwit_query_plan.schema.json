@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "QuickwitQueryPlan",
+  "type": "object",
+  "required": ["type", "evidence_session_id", "service", "index_hint", "time_window", "query_intent", "filters", "fields_requested", "max_hits"],
+  "properties": {
+    "type": { "type": "string", "const": "quickwit_query_plan" },
+    "evidence_session_id": { "type": "string" },
+    "service": { "type": "string" },
+    "repository": { "type": "string" },
+    "code_paths": { "type": "array", "items": { "type": "string" } },
+    "index_hint": { "type": "string" },
+    "time_window": {
+      "type": "object",
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "string", "format": "date-time" },
+        "end": { "type": "string", "format": "date-time" }
+      }
+    },
+    "query_intent": { "type": "string" },
+    "filters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["field", "op"],
+        "properties": {
+          "field": { "type": "string" },
+          "op": { "type": "string", "enum": ["=", "!=", "in", "not_in", "contains", "matches_sensitive_ref"] },
+          "value": {},
+          "value_ref": { "type": "string" }
+        }
+      }
+    },
+    "fields_requested": { "type": "array", "items": { "type": "string" } },
+    "max_hits": { "type": "integer", "minimum": 1, "maximum": 1000 },
+    "output_profile": { "type": "string" }
+  }
+}

@@ -39,7 +39,7 @@ def test_no_raw_pii_in_session_context():
 def test_no_raw_pii_in_sanitized_ticket():
     """The sanitized ticket must not contain raw PII from fixture."""
     jira = JiraConnector()
-    ticket = jira.fetch_and_sanitize("BUG-123")
+    ticket, _ = jira.fetch_and_sanitize("BUG-123")
     ticket_json = ticket.model_dump_json()
 
     for forbidden in FORBIDDEN_STRINGS:

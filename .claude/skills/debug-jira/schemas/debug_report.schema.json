@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DebugReport",
+  "type": "object",
+  "required": ["ticket_id", "evidence_session_id", "summary", "most_likely_root_cause", "confidence"],
+  "properties": {
+    "ticket_id": { "type": "string" },
+    "evidence_session_id": { "type": "string" },
+    "summary": { "type": "string" },
+    "services_inspected": { "type": "array", "items": { "type": "string" } },
+    "code_paths_inspected": { "type": "array", "items": { "type": "string" } },
+    "query_plans_submitted": { "type": "array", "items": { "type": "string" } },
+    "evidence_collected": { "type": "array", "items": { "type": "string" } },
+    "diagnostic_features_used": { "type": "array", "items": { "type": "object" } },
+    "hypotheses_considered": { "type": "array", "items": { "type": "string" } },
+    "hypotheses_rejected": { "type": "array", "items": { "type": "object", "properties": { "hypothesis": { "type": "string" }, "reason": { "type": "string" } } } },
+    "most_likely_root_cause": { "type": "string" },
+    "confidence": { "type": "string", "enum": ["low", "medium", "high"] },
+    "confidence_rationale": { "type": "string" },
+    "suggested_fix": { "type": "string" },
+    "fix_risks": { "type": "array", "items": { "type": "string" } },
+    "verification_steps": { "type": "array", "items": { "type": "string" } },
+    "evidence_ids": { "type": "array", "items": { "type": "string" } },
+    "audit_refs": { "type": "array", "items": { "type": "string" } }
+  }
+}

@@ -1,0 +1,12 @@
+# Exclude generated, vendor, and data files from code-review-graph
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.venv/
+node_modules/
+.data/
+evidence_gate/.data/
+*.lock
+uv.lock

@@ -1,0 +1,16 @@
+[project]
+name = "debb"
+version = "0.1.0"
+description = "AI-assisted production debugging system"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "code-review-graph>=2.3.0",
+]
+
+[tool.uv.workspace]
+members = [
+  "evidence_gate",
+]

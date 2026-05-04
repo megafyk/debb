@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# uv
+.venv/
+uv.lock
+
+# Environment
+.env
+
+# evidence_gate data
+evidence_gate/.data/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# code-review-graph
+.code-review-graph/
+
+# OS
+.DS_Store
+Thumbs.db
