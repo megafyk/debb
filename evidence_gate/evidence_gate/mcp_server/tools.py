@@ -8,13 +8,19 @@ from mcp.types import TextContent, Tool
 from evidence_gate.app.config import settings
 from evidence_gate.audit.audit_logger import AuditLogger
 from evidence_gate.connectors.jira_connector import JiraConnector
+from evidence_gate.connectors.metabase_connector import MetabaseConnector
 from evidence_gate.connectors.quickwit_connector import QuickwitConnector
+from evidence_gate.contracts.debug_report import DebugReport
 from evidence_gate.contracts.evidence_session import (
     EvidenceSession,
     EvidenceSessionContext,
     SensitiveRef,
 )
-from evidence_gate.request_services.evidence_executor import execute_quickwit_request
+from evidence_gate.request_services.evidence_executor import (
+    execute_metabase_request,
+    execute_quickwit_request,
+)
+from evidence_gate.request_services.report_reviewer import review_report
 from evidence_gate.request_services.request_pipeline import (
     validate_metabase_request,
     validate_quickwit_request,
@@ -38,18 +44,22 @@ def _build_dependencies():
         JsonStore(data_path, "evidence_requests"), audit_logger,
     )
     quickwit_connector = QuickwitConnector(settings, sensitive_store, audit_logger)
+    metabase_connector = MetabaseConnector(settings, sensitive_store, audit_logger)
     raw_store = RawEvidenceStore(data_path)
     masked_store = MaskedPackageStore(data_path)
+    report_store = JsonStore(data_path, "reports")
     return (
         session_store, sensitive_store, audit_logger, jira_connector,
-        request_store, quickwit_connector, raw_store, masked_store,
+        request_store, quickwit_connector, metabase_connector,
+        raw_store, masked_store, report_store,
     )
 
 
 def register_tools(server: Server) -> None:
     (
         session_store, sensitive_store, audit_logger, jira_connector,
-        request_store, quickwit_connector, raw_store, masked_store,
+        request_store, quickwit_connector, metabase_connector,
+        raw_store, masked_store, report_store,
     ) = _build_dependencies()
 
     @server.list_tools()
@@ -123,6 +133,17 @@ def register_tools(server: Server) -> None:
                     },
                 },
             ),
+            Tool(
+                name="submit_debug_report",
+                description="Submit a debug report for review. The report is validated for safety (no PII/credentials), completeness (evidence citations, verification steps), and quality (confidence calibration, no overstatement). Returns review result and report ID if accepted.",
+                inputSchema={
+                    "type": "object",
+                    "required": ["report"],
+                    "properties": {
+                        "report": {"type": "object", "description": "DebugReport object matching the debug_report schema"},
+                    },
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -149,8 +170,9 @@ def register_tools(server: Server) -> None:
                 raw_store, masked_store, audit_logger,
             )
         elif name == "create_metabase_evidence_request":
-            return await _create_evidence_request(
-                arguments["plan"], "metabase", request_store,
+            return await _create_metabase_evidence_request(
+                arguments["plan"], request_store, metabase_connector,
+                raw_store, masked_store, audit_logger,
             )
         elif name == "get_evidence_request_status":
             return await _get_evidence_request_status(
@@ -159,6 +181,10 @@ def register_tools(server: Server) -> None:
         elif name == "get_masked_evidence_package":
             return await _get_masked_evidence_package(
                 arguments["evidence_id"], masked_store,
+            )
+        elif name == "submit_debug_report":
+            return await _submit_debug_report(
+                arguments["report"], report_store, audit_logger,
             )
         else:
             return [TextContent(type="text", text=json.dumps({"error": f"Unknown tool: {name}"}))]
@@ -260,24 +286,47 @@ async def _get_sanitized_jira_ticket(
     return [TextContent(type="text", text=sanitized.model_dump_json(indent=2))]
 
 
-async def _create_evidence_request(
+async def _create_metabase_evidence_request(
     plan: dict,
-    plan_type: str,
     request_store: EvidenceRequestStore,
+    metabase_connector: MetabaseConnector,
+    raw_store: RawEvidenceStore,
+    masked_store: MaskedPackageStore,
+    audit_logger: AuditLogger,
 ) -> list[TextContent]:
     session_id = plan.get("evidence_session_id", "")
     if not session_id:
         return [TextContent(type="text", text=json.dumps({"error": "missing evidence_session_id in plan"}))]
 
+    # Validate the plan
     result = validate_metabase_request(plan, session_id, request_store)
+
+    if not result.accepted:
+        response = {
+            "evidence_request_id": result.request.evidence_request_id,
+            "state": result.request.state,
+            "accepted": False,
+            "rejection_reason": result.rejection_reason,
+        }
+        return [TextContent(type="text", text=json.dumps(response, indent=2))]
+
+    # Execute: validated plan → connector → raw store → redact → masked package
+    package = await execute_metabase_request(
+        request_id=result.request.evidence_request_id,
+        request_store=request_store,
+        metabase_connector=metabase_connector,
+        raw_store=raw_store,
+        masked_store=masked_store,
+        audit_logger=audit_logger,
+        evidence_session_id=session_id,
+    )
 
     response = {
         "evidence_request_id": result.request.evidence_request_id,
-        "state": result.request.state,
-        "accepted": result.accepted,
+        "state": "masked_package_ready",
+        "accepted": True,
+        "evidence_id": package.evidence_id,
     }
-    if not result.accepted:
-        response["rejection_reason"] = result.rejection_reason
     if result.narrowing_applied:
         response["narrowing_applied"] = result.narrowing_applied
 
@@ -360,3 +409,43 @@ async def _get_evidence_request_status(
         "audit_refs": request.audit_refs,
     }
     return [TextContent(type="text", text=json.dumps(response, indent=2))]
+
+
+async def _submit_debug_report(
+    report_data: dict,
+    report_store: JsonStore,
+    audit_logger: AuditLogger,
+) -> list[TextContent]:
+    # Review the report
+    result = review_report(report_data)
+
+    if not result.ok:
+        return [TextContent(type="text", text=json.dumps({
+            "accepted": False,
+            "issues": result.issues,
+        }, indent=2))]
+
+    # Parse into model (validates structure)
+    try:
+        report = DebugReport.model_validate(report_data)
+    except Exception as e:
+        return [TextContent(type="text", text=json.dumps({
+            "accepted": False,
+            "issues": [f"validation error: {e}"],
+        }, indent=2))]
+
+    # Store the report
+    report_store.save(report.report_id, report)
+
+    # Audit
+    audit_logger.log(
+        report.evidence_session_id,
+        "report_submitted",
+        {"report_id": report.report_id, "confidence": report.confidence},
+    )
+
+    return [TextContent(type="text", text=json.dumps({
+        "accepted": True,
+        "report_id": report.report_id,
+        "review_issues": [],
+    }, indent=2))]

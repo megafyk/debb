@@ -99,8 +99,7 @@ def test_metabase_select_star_rejected():
         plan["sql_candidate"] = "SELECT * FROM accounts"
         result = validate_metabase_request(plan, "ESESS-1", store)
         assert not result.accepted
-        # Bounds checker rejects first (missing params for sql_candidate)
-        assert "bounds" in result.rejection_reason
+        assert "safety" in result.rejection_reason or "bounds" in result.rejection_reason
 
 
 def test_metabase_drop_table_rejected():

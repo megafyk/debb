@@ -1,4 +1,5 @@
 from evidence_gate.contracts.audit import AuditEvent
+from evidence_gate.contracts.debug_report import DebugReport, RejectedHypothesis
 from evidence_gate.contracts.evidence_request import EvidenceRequest
 from evidence_gate.contracts.evidence_session import (
     EvidenceSession,
@@ -19,6 +20,7 @@ from evidence_gate.contracts.sanitized_ticket import SanitizedTicketContext
 
 __all__ = [
     "AuditEvent",
+    "DebugReport",
     "DiagnosticFeature",
     "EvidenceRequest",
     "EvidenceSession",
@@ -27,6 +29,7 @@ __all__ = [
     "MetabaseQueryPlan",
     "QueryFilter",
     "QuickwitQueryPlan",
+    "RejectedHypothesis",
     "SanitizedTicketContext",
     "SensitiveRef",
     "TimeWindow",

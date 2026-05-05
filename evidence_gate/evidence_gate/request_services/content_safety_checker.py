@@ -23,7 +23,7 @@ _CREDENTIAL_PATTERNS = [
 ]
 
 _SQL_DANGEROUS = [
-    (re.compile(r"(?i)\bSELECT\s+\*\b"), "SELECT * not allowed"),
+    (re.compile(r"(?i)\bSELECT\s+\*"), "SELECT * not allowed"),
     (re.compile(r"(?i)\b(?:DROP|TRUNCATE|DELETE|ALTER|CREATE|INSERT|UPDATE)\s+"), "mutating SQL not allowed"),
     (re.compile(r"(?i)\b(?:UNION\s+SELECT|INTO\s+OUTFILE|LOAD_FILE)\b"), "SQL injection pattern detected"),
 ]
