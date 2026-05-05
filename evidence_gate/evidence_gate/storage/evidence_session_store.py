@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from evidence_gate.contracts.evidence_session import EvidenceSession
+from evidence_gate.contracts import EvidenceSession
 
 
 class EvidenceSessionStore:

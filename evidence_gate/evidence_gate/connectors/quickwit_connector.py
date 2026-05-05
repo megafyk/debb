@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 import httpx
 
-from evidence_gate.app.config import Settings
-from evidence_gate.audit.audit_logger import AuditLogger
+from evidence_gate.config import Settings
+from evidence_gate.audit_logger import AuditLogger
 from evidence_gate.connectors.auth import quickwit_basic_auth_header
-from evidence_gate.contracts.query_plan import QuickwitQueryPlan
-from evidence_gate.sessions.sensitive_value_store import SensitiveValueStore
+from evidence_gate.contracts import QuickwitQueryPlan
+from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 
 
 class QuickwitConnector:
@@ -24,7 +24,7 @@ class QuickwitConnector:
 
     @property
     def is_live(self) -> bool:
-        return bool(self._settings.quickwit_url)
+        return self._settings.quickwit_enabled and bool(self._settings.quickwit_url)
 
     async def execute(
         self, plan: QuickwitQueryPlan, evidence_session_id: str

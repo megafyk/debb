@@ -3,7 +3,7 @@
 import tempfile
 from pathlib import Path
 
-from evidence_gate.audit.audit_logger import AuditLogger
+from evidence_gate.audit_logger import AuditLogger
 from evidence_gate.request_services.request_pipeline import (
     validate_metabase_request,
     validate_quickwit_request,

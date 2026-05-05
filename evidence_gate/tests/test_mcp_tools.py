@@ -4,11 +4,16 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-from evidence_gate.audit.audit_logger import AuditLogger
+from evidence_gate.audit_logger import AuditLogger
 from evidence_gate.connectors.jira_connector import JiraConnector
-from evidence_gate.mcp_server.tools import _parse_ticket_id, _start_debugging_session, _get_sanitized_jira_ticket
-from evidence_gate.sessions.evidence_session_store import EvidenceSessionStore
-from evidence_gate.sessions.sensitive_value_store import SensitiveValueStore
+from evidence_gate.mcp_server.tools import (
+    _get_sanitized_jira_ticket,
+    _list_evidence_templates,
+    _parse_ticket_id,
+    _start_debugging_session,
+)
+from evidence_gate.storage.evidence_session_store import EvidenceSessionStore
+from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 from evidence_gate.storage.jsonl_event_store import JsonlEventStore
 
 
@@ -60,6 +65,19 @@ def test_get_sanitized_jira_ticket():
         )
         data = json.loads(result2[0].text)
         assert data["ticket_id"] == "BUG-123"
+
+
+def test_list_evidence_templates():
+    result = asyncio.run(_list_evidence_templates())
+    data = json.loads(result[0].text)
+    assert "templates" in data
+    template_ids = {t["template_id"] for t in data["templates"]}
+    assert "account_status_by_phone_hash" in template_ids
+    assert "login_attempt_counts" in template_ids
+    # No raw secrets in the listing
+    payload_text = result[0].text
+    assert "password" not in payload_text.lower()
+    assert "session" not in payload_text.lower()
 
 
 def test_get_sanitized_jira_ticket_missing_session():

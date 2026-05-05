@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from evidence_gate.audit.audit_logger import AuditLogger
-from evidence_gate.contracts.evidence_request import EvidenceRequest
+from evidence_gate.audit_logger import AuditLogger
+from evidence_gate.contracts import EvidenceRequest
 from evidence_gate.storage.json_store import JsonStore
 
 
@@ -60,11 +60,15 @@ class EvidenceRequestStore:
                 request.narrowing_applied = details["narrowing_applied"]
             if "evidence_id" in details:
                 request.evidence_id = details["evidence_id"]
+            if "plan" in details:
+                request.plan = details["plan"]
 
+        # Audit log excludes the full plan body (verbose; narrowing_applied already captures the change)
+        audit_details = {k: v for k, v in (details or {}).items() if k != "plan"}
         audit_event = self._audit.log(
             request.evidence_session_id,
             "request_state_changed",
-            {"request_id": request_id, "from": current, "to": new_state, **(details or {})},
+            {"request_id": request_id, "from": current, "to": new_state, **audit_details},
         )
         request.audit_refs.append(audit_event.audit_id)
 

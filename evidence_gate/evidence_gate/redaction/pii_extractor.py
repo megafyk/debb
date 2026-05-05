@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import NamedTuple
 
-from evidence_gate.sessions.sensitive_value_store import SensitiveValueStore
+from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 
 
 class ExtractedRef(NamedTuple):

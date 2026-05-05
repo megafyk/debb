@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from evidence_gate.contracts.audit import AuditEvent
+from evidence_gate.contracts import AuditEvent
 from evidence_gate.storage.jsonl_event_store import JsonlEventStore
 
 

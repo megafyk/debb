@@ -4,12 +4,11 @@ import asyncio
 import tempfile
 from pathlib import Path
 
-from evidence_gate.app.config import Settings
-from evidence_gate.audit.audit_logger import AuditLogger
-from evidence_gate.connectors.auth import metabase_fixture_session_header
+from evidence_gate.config import Settings
+from evidence_gate.audit_logger import AuditLogger
 from evidence_gate.connectors.metabase_connector import MetabaseConnector
-from evidence_gate.contracts.query_plan import MetabaseQueryPlan
-from evidence_gate.sessions.sensitive_value_store import SensitiveValueStore
+from evidence_gate.contracts import MetabaseQueryPlan
+from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 from evidence_gate.storage.jsonl_event_store import JsonlEventStore
 
 
@@ -73,7 +72,7 @@ def test_is_live_false_when_no_url():
 def test_is_live_true_when_url_set():
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
-        settings = Settings(metabase_url="http://localhost:3000", metabase_username="", metabase_password="")
+        settings = Settings(metabase_enabled=True, metabase_url="http://localhost:3000", metabase_username="", metabase_password="")
         sensitive_store = SensitiveValueStore(tmp_path)
         audit_logger = AuditLogger(JsonlEventStore(tmp_path / "audit.jsonl"))
         connector = MetabaseConnector(settings, sensitive_store, audit_logger)
@@ -117,9 +116,3 @@ def test_audit_logged_after_execute():
         events = event_store.read_all()
         mb_events = [e for e in events if e.get("event_type") == "metabase_query_executed"]
         assert len(mb_events) >= 1
-
-
-def test_fixture_session_header():
-    header = metabase_fixture_session_header()
-    assert header["X-Metabase-Session"] == "fixture-session-token"
-    assert header["Content-Type"] == "application/json"

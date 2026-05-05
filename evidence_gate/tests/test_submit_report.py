@@ -5,8 +5,8 @@ import json
 import tempfile
 from pathlib import Path
 
-from evidence_gate.audit.audit_logger import AuditLogger
-from evidence_gate.contracts.debug_report import DebugReport
+from evidence_gate.audit_logger import AuditLogger
+from evidence_gate.contracts import DebugReport
 from evidence_gate.mcp_server.tools import _submit_debug_report
 from evidence_gate.storage.json_store import JsonStore
 from evidence_gate.storage.jsonl_event_store import JsonlEventStore

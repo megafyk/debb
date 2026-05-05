@@ -4,7 +4,7 @@ from base64 import b64encode
 
 import httpx
 
-from evidence_gate.app.config import Settings
+from evidence_gate.config import Settings
 
 
 def jira_basic_auth_header(settings: Settings) -> dict[str, str]:
@@ -47,7 +47,3 @@ async def metabase_session_header(settings: Settings) -> dict[str, str]:
         resp.raise_for_status()
         session_id = resp.json()["id"]
     return {"X-Metabase-Session": session_id, "Content-Type": "application/json"}
-
-
-def metabase_fixture_session_header() -> dict[str, str]:
-    return {"X-Metabase-Session": "fixture-session-token", "Content-Type": "application/json"}

@@ -5,11 +5,11 @@ import json
 import tempfile
 from pathlib import Path
 
-from evidence_gate.app.config import Settings
-from evidence_gate.audit.audit_logger import AuditLogger
+from evidence_gate.config import Settings
+from evidence_gate.audit_logger import AuditLogger
 from evidence_gate.connectors.quickwit_connector import QuickwitConnector
-from evidence_gate.contracts.query_plan import QuickwitQueryPlan, QueryFilter, TimeWindow
-from evidence_gate.sessions.sensitive_value_store import SensitiveValueStore
+from evidence_gate.contracts import QuickwitQueryPlan, QueryFilter, TimeWindow
+from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 from evidence_gate.storage.jsonl_event_store import JsonlEventStore
 
 

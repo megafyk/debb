@@ -68,10 +68,13 @@ def check_metabase_bounds(plan: dict) -> BoundsResult:
 
     facts = plan.get("facts_requested", [])
     if len(facts) > 20:
+        adjusted = dict(plan)
+        adjusted["facts_requested"] = facts[:20]
         return BoundsResult(
             ok=True,
             narrowed=True,
             narrowing_applied=[f"facts_requested truncated from {len(facts)} to 20"],
+            adjusted_plan=adjusted,
         )
 
     return BoundsResult(ok=True)

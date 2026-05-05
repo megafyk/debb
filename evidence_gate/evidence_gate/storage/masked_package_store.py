@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from evidence_gate.contracts.masked_evidence_package import MaskedEvidencePackage
+from evidence_gate.contracts import MaskedEvidencePackage
 
 
 class MaskedPackageStore:

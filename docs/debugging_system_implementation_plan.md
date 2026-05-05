@@ -1,5 +1,7 @@
 # AI-Assisted Production Debugging System — Skill-First Implementation Plan
 
+> **Status (2026-05-05):** Milestones 1–8 complete. 192 tests passing (26 boundary). 7 MCP tools live. This document now describes the as-built system; deviations from the original plan are noted inline.
+
 ## 0. Purpose
 
 This plan defines a clean MVP for an AI-assisted production debugging workflow.
@@ -595,7 +597,7 @@ masked evidence package
 
 ## 9. evidence_gate Module Layout
 
-Keep this small for MVP:
+As-built layout (kept intentionally small):
 
 ```text
 evidence_gate/
@@ -615,6 +617,7 @@ evidence_gate/
       query_plan.py
       evidence_request.py
       masked_evidence_package.py
+      debug_report.py
       audit.py
 
     sessions/
@@ -625,41 +628,41 @@ evidence_gate/
       schema_checker.py
       content_safety_checker.py
       bounds_checker.py
-      template_matcher.py
-      connector_job_builder.py
-      output_profile_checker.py
-      leakage_sentinel.py
+      request_pipeline.py
+      evidence_executor.py
+      report_reviewer.py
 
     connectors/
       auth.py
       jira_connector.py
-      jira_rest_spec_loader.py
+      jira_field_mapper.py
       quickwit_connector.py
-      metabase_api_spec_loader.py
       metabase_connector.py
+      metabase_api_spec_loader.py
+      metabase_template_registry.py
+      metabase_param_resolver.py
 
     redaction/
+      pii_extractor.py
       jira_redactor.py
       log_redactor.py
       db_redactor.py
-      pii_detector.py
-      secret_scanner.py
-      token_service.py
-      diagnostic_features.py
 
     storage/
       json_store.py
       jsonl_event_store.py
+      evidence_request_store.py
       raw_evidence_store.py
       masked_package_store.py
 
     audit/
       audit_logger.py
 
-    tests/
+  tests/
+    boundary/
 ```
 
-Avoid extra layers until needed.
+Avoid extra layers until needed. Tests live alongside `evidence_gate/` (not nested inside the package).
 
 ## 10. MCP Tools
 
@@ -696,12 +699,6 @@ read_raw_jira_attachment
 
 Keep connector configuration simple for MVP. `evidence_gate` loads Jira, Quickwit, and Metabase connection settings from environment variables, with local development support from `python-dotenv`.
 
-Required dependency:
-
-```bash
-uv add --package evidence-gate python-dotenv
-```
-
 Root `.env.example`:
 
 ```dotenv
@@ -710,16 +707,20 @@ EVIDENCE_GATE_JIRA_BASE_URL=https://your-domain.atlassian.net
 EVIDENCE_GATE_JIRA_USERNAME=your-atlassian-email@example.com
 EVIDENCE_GATE_JIRA_PASSWORD=your-atlassian-api-token
 
-# Quickwit
+# Quickwit (set ENABLED=false to force fixture mode even if URL is set)
+EVIDENCE_GATE_QUICKWIT_ENABLED=true
 EVIDENCE_GATE_QUICKWIT_URL=http://localhost:7280
 EVIDENCE_GATE_QUICKWIT_USERNAME=quickwit-user
 EVIDENCE_GATE_QUICKWIT_PASSWORD=quickwit-password
 
-# Metabase
+# Metabase (set ENABLED=false to force fixture mode even if URL is set)
+EVIDENCE_GATE_METABASE_ENABLED=true
 EVIDENCE_GATE_METABASE_URL=http://localhost:3000
 EVIDENCE_GATE_METABASE_USERNAME=metabase-user@example.com
 EVIDENCE_GATE_METABASE_PASSWORD=metabase-password
 ```
+
+Each connector's `is_live` requires both the `*_ENABLED` flag (default `true`) and a non-empty URL. When either is missing, the connector returns fixture data — useful for tests and local development.
 
 Rules:
 
@@ -896,7 +897,7 @@ Rules:
 
 The Skill may create query plans. Query plans are not executable production queries.
 
-### 14.1 QuickwitQueryPlan
+### 15.1 QuickwitQueryPlan
 
 ```json
 {
@@ -922,7 +923,7 @@ The Skill may create query plans. Query plans are not executable production quer
 }
 ```
 
-### 14.2 MetabaseQueryPlan
+### 15.2 MetabaseQueryPlan
 
 ```json
 {
@@ -1012,18 +1013,18 @@ Do not expose a generic Metabase query tool over MCP. The only MCP entry point s
 
 `evidence_gate` must treat every agent request as untrusted.
 
-Keep deterministic services simple and named:
+As-built services (kept minimal — speculative services like `TemplateMatcher`, `ConnectorJobBuilder`, `OutputProfileChecker`, and a separate `LeakageSentinel` were not needed):
 
 ```text
-RequestSchemaChecker
-RequestContentSafetyChecker
-RequestBoundsChecker
-TemplateMatcher
-SensitiveValueResolver
-ConnectorJobBuilder
-OutputProfileChecker
-DebPilotLeakageSentinel
+schema_checker          — validates QuickwitQueryPlan / MetabaseQueryPlan shape
+content_safety_checker  — rejects raw SQL, SELECT *, raw PII, raw log DSL
+bounds_checker          — enforces service, time window, max_hits, projection
+request_pipeline        — runs schema → safety → bounds in order
+evidence_executor       — drives the state machine, calls connectors, redacts
+report_reviewer         — programmatic leakage check on submitted reports
 ```
+
+Sensitive value resolution is handled inline by the connectors via `SensitiveValueStore`; Metabase template matching is handled by `metabase_template_registry`. No standalone `TemplateMatcher` or `SensitiveValueResolver` service was needed.
 
 Default behavior:
 
@@ -1226,7 +1227,9 @@ Tests must scan:
 
 ## 24. Implementation Milestones
 
-### Milestone 1 — Skill skeleton
+All milestones M1–M8 are complete (see `docs/log.md` for the changelog). Status markers below.
+
+### Milestone 1 — Skill skeleton ✅
 
 Build:
 
@@ -1246,7 +1249,7 @@ Acceptance:
 - Skill includes service map, query plan, and report templates.
 ```
 
-### Milestone 2 — evidence_gate session and sanitized Jira fixtures
+### Milestone 2 — evidence_gate session and sanitized Jira fixtures ✅
 
 Build:
 
@@ -1267,7 +1270,7 @@ Acceptance:
 - Raw Jira JSON never appears in agent-visible output.
 ```
 
-### Milestone 3 — real Jira ingestion
+### Milestone 3 — real Jira ingestion ✅
 
 Build:
 
@@ -1286,7 +1289,7 @@ Acceptance:
 - Raw sensitive Jira values are converted to secure refs and diagnostic features.
 ```
 
-### Milestone 4 — service repo map and code scan
+### Milestone 4 — service repo map and code scan ✅
 
 Build:
 
@@ -1309,7 +1312,7 @@ Acceptance:
 - No raw sensitive values appear in service map.
 ```
 
-### Milestone 5 — query plan validation
+### Milestone 5 — query plan validation ✅
 
 Build:
 
@@ -1328,7 +1331,7 @@ Acceptance:
 - evidence_gate rejects unsafe SQL, raw PII, overbroad log requests, and missing bounds.
 ```
 
-### Milestone 6 — Quickwit masked log loop
+### Milestone 6 — Quickwit masked log loop ✅
 
 Build:
 
@@ -1347,7 +1350,7 @@ Acceptance:
 - Agent receives masked log summaries only.
 ```
 
-### Milestone 7 — Metabase templates
+### Milestone 7 — Metabase templates ✅
 
 Build only after logs work:
 
@@ -1369,7 +1372,7 @@ Acceptance:
 - Agent receives aggregate or masked diagnostic facts only.
 ```
 
-### Milestone 8 — reports and evals
+### Milestone 8 — reports and evals ✅
 
 Build:
 
@@ -1449,5 +1452,5 @@ Add Metabase templates only after this loop works safely. When added, implement 
 
 - Claude Code Agent Skills documentation: https://docs.claude.com/en/docs/claude-code/skills
 - Jira REST API spec: `docs/jira_api.json`
-- Quickwit REST API spec: `docs/quickwit_api.json` after replacing placeholder content with the real Quickwit spec
+- Quickwit REST API spec: `docs/quickwit_api.json`
 - Metabase API spec: `docs/metabase_api.json`

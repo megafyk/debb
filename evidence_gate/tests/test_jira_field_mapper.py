@@ -1,4 +1,4 @@
-from evidence_gate.connectors.jira_field_mapper import map_jira_fields
+from evidence_gate.connectors.jira_connector import map_jira_fields
 
 
 def test_maps_allowlisted_fields():

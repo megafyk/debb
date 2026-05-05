@@ -1,9 +1,9 @@
 import tempfile
 from pathlib import Path
 
-from evidence_gate.contracts.evidence_session import EvidenceSession
-from evidence_gate.sessions.evidence_session_store import EvidenceSessionStore
-from evidence_gate.sessions.sensitive_value_store import SensitiveValueStore
+from evidence_gate.contracts import EvidenceSession
+from evidence_gate.storage.evidence_session_store import EvidenceSessionStore
+from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 
 
 def test_session_store_save_and_get():

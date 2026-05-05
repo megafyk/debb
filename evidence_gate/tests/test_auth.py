@@ -1,6 +1,6 @@
 from base64 import b64decode
 
-from evidence_gate.app.config import Settings
+from evidence_gate.config import Settings
 from evidence_gate.connectors.auth import jira_basic_auth_header
 
 

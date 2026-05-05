@@ -5,7 +5,7 @@ import re
 import tempfile
 from pathlib import Path
 
-from evidence_gate.audit.audit_logger import AuditLogger
+from evidence_gate.audit_logger import AuditLogger
 from evidence_gate.storage.jsonl_event_store import JsonlEventStore
 
 _CREDENTIAL_PATTERNS = [

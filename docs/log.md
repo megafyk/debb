@@ -17,13 +17,55 @@ Tracks changes and implementation progress for the AI-assisted production debugg
 | M7 | Metabase templates | ✅ Done |
 | M8 | Reports and evals | ✅ Done |
 
-**192 tests passing** (26 boundary tests) • **7 MCP tools** • **88 Python files**
+**175 tests passing** (26 boundary tests) • **8 MCP tools** • **65 Python files** (34 source + 31 tests)
 
 ---
 
 ## Changelog
 
 ### 2026-05-05
+
+#### Directory consolidation
+Flattened the per-plan §9 layout into fewer modules where each directory
+held only 1–2 files or single-call-site helpers:
+- Dropped `app/`: `config.py` and `main.py` hoisted to package root
+- Dropped `audit/`: `audit_logger.py` (18 lines) hoisted to root
+- Dropped `sessions/`: `evidence_session_store` and `sensitive_value_store`
+  merged into `storage/` (they were storage)
+- Dropped `contracts/` (7 files): merged into a single `contracts.py` at
+  package root
+- Merged Metabase helpers (`metabase_api_spec_loader`,
+  `metabase_param_resolver`, `metabase_template_registry`) into
+  `metabase_connector.py` — each had exactly one call site
+- Merged `jira_field_mapper.py` into `jira_connector.py` — same single
+  producer / single consumer
+- Removed corresponding helper-only unit tests (3 files); integration
+  tests in `test_metabase_connector.py` / `test_metabase_executor.py`
+  still cover behavior
+
+Result: 88 → 65 Python files, 11 → 6 source directories. All 175 tests
+green; end-to-end flow + boundary tests unchanged.
+
+#### Plan-conformance audit + simplification pass
+- Fixed bounds-narrowing bug: `bounds_checker` produced an `adjusted_plan`
+  but `request_pipeline` only logged narrowing strings; the executor still
+  ran the original over-broad plan. Now the narrowed plan is persisted on
+  the request via `EvidenceRequestStore.transition` (audit log excludes
+  the verbose plan body)
+- Added `list_evidence_templates` MCP tool (plan §10) backed by
+  `TemplateRegistry.list_all`; documented in Skill reference but was
+  unregistered (8 MCP tools total)
+- Made `MetabaseApiSpecLoader` actually guard: `MetabaseConnector.__init__`
+  now fails fast if `/api/session` or `/api/dataset` aren't in the spec
+- Metabase `bounds_checker` now returns the truncated plan when
+  `facts_requested > 20` (was cosmetic before)
+- Consolidated duplicated PII/credential regex tuples + recursive walker
+  from `content_safety_checker` and `report_reviewer` into shared
+  `redaction/leakage.py` (~40 lines saved)
+- Removed dead code: `metabase_fixture_session_header`, unused `UTC` /
+  `SensitiveRef` imports, unused `_ALLOWED_FIELDS` set in
+  `jira_field_mapper`
+- New tests: persisted-plan narrowing, `list_evidence_templates`
 
 #### Post-milestone polish
 - Added `test_sensitive_features_without_raw_values.py` (4 boundary tests per §23)

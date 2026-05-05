@@ -4,9 +4,9 @@ from pathlib import Path
 import httpx
 import respx
 
-from evidence_gate.app.config import Settings
+from evidence_gate.config import Settings
 from evidence_gate.connectors.jira_connector import JiraConnector
-from evidence_gate.sessions.sensitive_value_store import SensitiveValueStore
+from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 
 
 _FAKE_JIRA_RESPONSE = {

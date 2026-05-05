@@ -1,7 +1,7 @@
 import tempfile
 from pathlib import Path
 
-from evidence_gate.audit.audit_logger import AuditLogger
+from evidence_gate.audit_logger import AuditLogger
 from evidence_gate.request_services.request_pipeline import (
     validate_metabase_request,
     validate_quickwit_request,
@@ -72,6 +72,12 @@ def test_quickwit_overbroad_narrowed():
         result = validate_quickwit_request(plan, "ESESS-1", store)
         assert result.accepted
         assert len(result.narrowing_applied) > 0
+        # Narrowing must be persisted on the request plan (not just the audit string)
+        persisted = store.get(result.request.evidence_request_id)
+        assert persisted.plan["max_hits"] == 500
+        assert persisted.plan["time_window"]["end"] == "2026-01-03T00:00:00+00:00"
+        # 24h window from end
+        assert persisted.plan["time_window"]["start"] == "2026-01-02T00:00:00+00:00"
 
 
 def _valid_metabase_plan():

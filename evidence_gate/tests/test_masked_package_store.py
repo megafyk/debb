@@ -3,7 +3,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from evidence_gate.contracts.masked_evidence_package import MaskedEvidencePackage
+from evidence_gate.contracts import MaskedEvidencePackage
 from evidence_gate.storage.masked_package_store import MaskedPackageStore
 
 

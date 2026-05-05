@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from evidence_gate.audit.audit_logger import AuditLogger
-from evidence_gate.contracts.evidence_request import EvidenceRequest
+from evidence_gate.audit_logger import AuditLogger
+from evidence_gate.contracts import EvidenceRequest
 from evidence_gate.storage.evidence_request_store import EvidenceRequestStore
 from evidence_gate.storage.json_store import JsonStore
 from evidence_gate.storage.jsonl_event_store import JsonlEventStore

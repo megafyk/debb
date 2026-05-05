@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from evidence_gate.contracts.evidence_request import EvidenceRequest
+from evidence_gate.contracts import EvidenceRequest
 from evidence_gate.request_services.bounds_checker import (
     check_metabase_bounds,
     check_quickwit_bounds,
@@ -59,10 +59,13 @@ def validate_quickwit_request(
         return PipelineResult(request=request, accepted=False, rejection_reason=reason)
 
     narrowing = bounds_result.narrowing_applied if bounds_result.narrowed else []
+    transition_details: dict = {"narrowing_applied": narrowing}
+    if bounds_result.adjusted_plan is not None:
+        transition_details["plan"] = bounds_result.adjusted_plan
     request_store.transition(
         request.evidence_request_id,
         "bounded",
-        {"narrowing_applied": narrowing},
+        transition_details,
     )
 
     return PipelineResult(request=request, accepted=True, narrowing_applied=narrowing)
@@ -104,10 +107,13 @@ def validate_metabase_request(
         return PipelineResult(request=request, accepted=False, rejection_reason=reason)
 
     narrowing = bounds_result.narrowing_applied if bounds_result.narrowed else []
+    transition_details: dict = {"narrowing_applied": narrowing}
+    if bounds_result.adjusted_plan is not None:
+        transition_details["plan"] = bounds_result.adjusted_plan
     request_store.transition(
         request.evidence_request_id,
         "bounded",
-        {"narrowing_applied": narrowing},
+        transition_details,
     )
 
     return PipelineResult(request=request, accepted=True, narrowing_applied=narrowing)

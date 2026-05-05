@@ -5,16 +5,15 @@ import json
 from mcp.server import Server
 from mcp.types import TextContent, Tool
 
-from evidence_gate.app.config import settings
-from evidence_gate.audit.audit_logger import AuditLogger
+from evidence_gate.config import settings
+from evidence_gate.audit_logger import AuditLogger
 from evidence_gate.connectors.jira_connector import JiraConnector
-from evidence_gate.connectors.metabase_connector import MetabaseConnector
+from evidence_gate.connectors.metabase_connector import MetabaseConnector, list_templates
 from evidence_gate.connectors.quickwit_connector import QuickwitConnector
-from evidence_gate.contracts.debug_report import DebugReport
-from evidence_gate.contracts.evidence_session import (
+from evidence_gate.contracts import (
+    DebugReport,
     EvidenceSession,
     EvidenceSessionContext,
-    SensitiveRef,
 )
 from evidence_gate.request_services.evidence_executor import (
     execute_metabase_request,
@@ -25,8 +24,8 @@ from evidence_gate.request_services.request_pipeline import (
     validate_metabase_request,
     validate_quickwit_request,
 )
-from evidence_gate.sessions.evidence_session_store import EvidenceSessionStore
-from evidence_gate.sessions.sensitive_value_store import SensitiveValueStore
+from evidence_gate.storage.evidence_session_store import EvidenceSessionStore
+from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 from evidence_gate.storage.evidence_request_store import EvidenceRequestStore
 from evidence_gate.storage.json_store import JsonStore
 from evidence_gate.storage.jsonl_event_store import JsonlEventStore
@@ -134,6 +133,14 @@ def register_tools(server: Server) -> None:
                 },
             ),
             Tool(
+                name="list_evidence_templates",
+                description="List the registered Metabase query templates that MetabaseQueryPlan can target. Returns template_id, entity, description, parameter names, and facts produced.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {},
+                },
+            ),
+            Tool(
                 name="submit_debug_report",
                 description="Submit a debug report for review. The report is validated for safety (no PII/credentials), completeness (evidence citations, verification steps), and quality (confidence calibration, no overstatement). Returns review result and report ID if accepted.",
                 inputSchema={
@@ -182,6 +189,8 @@ def register_tools(server: Server) -> None:
             return await _get_masked_evidence_package(
                 arguments["evidence_id"], masked_store,
             )
+        elif name == "list_evidence_templates":
+            return await _list_evidence_templates()
         elif name == "submit_debug_report":
             return await _submit_debug_report(
                 arguments["report"], report_store, audit_logger,
@@ -409,6 +418,20 @@ async def _get_evidence_request_status(
         "audit_refs": request.audit_refs,
     }
     return [TextContent(type="text", text=json.dumps(response, indent=2))]
+
+
+async def _list_evidence_templates() -> list[TextContent]:
+    templates = [
+        {
+            "template_id": t.template_id,
+            "entity": t.entity,
+            "description": t.description,
+            "param_names": t.param_names,
+            "facts_produced": t.facts_produced,
+        }
+        for t in list_templates()
+    ]
+    return [TextContent(type="text", text=json.dumps({"templates": templates}, indent=2))]
 
 
 async def _submit_debug_report(

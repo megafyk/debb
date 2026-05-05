@@ -2,7 +2,7 @@ import tempfile
 from pathlib import Path
 
 from evidence_gate.redaction.pii_extractor import extract_sensitive_values
-from evidence_gate.sessions.sensitive_value_store import SensitiveValueStore
+from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 
 
 def test_extracts_email():

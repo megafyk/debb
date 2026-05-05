@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from evidence_gate.audit.audit_logger import AuditLogger
+from evidence_gate.audit_logger import AuditLogger
 from evidence_gate.connectors.metabase_connector import MetabaseConnector
 from evidence_gate.connectors.quickwit_connector import QuickwitConnector
-from evidence_gate.contracts.masked_evidence_package import MaskedEvidencePackage
-from evidence_gate.contracts.query_plan import MetabaseQueryPlan, QuickwitQueryPlan
+from evidence_gate.contracts import MaskedEvidencePackage
+from evidence_gate.contracts import MetabaseQueryPlan, QuickwitQueryPlan
 from evidence_gate.redaction.db_redactor import (
     build_masked_db_package,
     extract_diagnostic_features,

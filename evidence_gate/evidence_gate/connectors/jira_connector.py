@@ -1,18 +1,16 @@
+"""Jira connector — fetches and sanitizes tickets via the REST API."""
 from __future__ import annotations
 
 import httpx
 
-from evidence_gate.app.config import Settings
+from evidence_gate.config import Settings
 from evidence_gate.connectors.auth import jira_basic_auth_header
-from evidence_gate.connectors.jira_field_mapper import map_jira_fields
-from evidence_gate.contracts.evidence_session import SensitiveRef
-from evidence_gate.contracts.sanitized_ticket import SanitizedTicketContext
+from evidence_gate.contracts import SanitizedTicketContext, SensitiveRef
 from evidence_gate.redaction.jira_redactor import redact_text
 from evidence_gate.redaction.pii_extractor import ExtractedRef, extract_sensitive_values
-from evidence_gate.sessions.sensitive_value_store import SensitiveValueStore
+from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 
 
-# Fixture data for testing / when no Jira configured
 _FIXTURE_TICKET = {
     "key": "BUG-123",
     "fields": {
@@ -36,12 +34,77 @@ _FIXTURE_TICKET = {
     },
 }
 
-# Jira REST fields to request (only allowlisted)
+# Allowlisted Jira REST fields — only these are requested
 _JIRA_FIELDS = (
     "summary,issuetype,priority,status,labels,components,"
     "description,comment,created,updated,resolutiondate,"
     "issuelinks,subtasks,parent,assignee,reporter,attachment"
 )
+
+
+def _name(obj: dict | None) -> str:
+    return obj.get("name", "") if isinstance(obj, dict) else ""
+
+
+def _component_names(comps: list | None) -> list[str]:
+    if not comps:
+        return []
+    return [c["name"] for c in comps if isinstance(c, dict) and "name" in c]
+
+
+def _comment_bodies(comment_field: dict | None) -> list[str]:
+    if not comment_field:
+        return []
+    comments = comment_field.get("comments", [])
+    return [c.get("body", "") for c in comments if isinstance(c, dict)]
+
+
+def _subtask_keys(subtasks: list | None) -> list[str]:
+    if not subtasks:
+        return []
+    return [s["key"] if isinstance(s, dict) else str(s) for s in subtasks]
+
+
+def _link_summaries(links: list | None) -> list[dict]:
+    if not links:
+        return []
+    out = []
+    for link in links:
+        if not isinstance(link, dict):
+            continue
+        entry: dict = {}
+        if "type" in link and isinstance(link["type"], dict):
+            entry["type"] = link["type"].get("name", "")
+        if "outwardIssue" in link and isinstance(link["outwardIssue"], dict):
+            entry["outward_key"] = link["outwardIssue"].get("key", "")
+        if "inwardIssue" in link and isinstance(link["inwardIssue"], dict):
+            entry["inward_key"] = link["inwardIssue"].get("key", "")
+        out.append(entry)
+    return out
+
+
+def map_jira_fields(ticket_id: str, raw_issue: dict) -> SanitizedTicketContext:
+    """Map raw Jira REST JSON to SanitizedTicketContext (allowlisted fields only)."""
+    fields = raw_issue.get("fields", {})
+    return SanitizedTicketContext(
+        ticket_id=ticket_id,
+        summary=fields.get("summary", ""),
+        issue_type=_name(fields.get("issuetype")),
+        priority=_name(fields.get("priority")),
+        status=_name(fields.get("status")),
+        labels=fields.get("labels", []),
+        components=_component_names(fields.get("components")),
+        description_sanitized=fields.get("description", "") or "",
+        comments_sanitized=_comment_bodies(fields.get("comment")),
+        created=fields.get("created"),
+        updated=fields.get("updated"),
+        issue_links=_link_summaries(fields.get("issuelinks")),
+        subtasks=_subtask_keys(fields.get("subtasks")),
+    )
+
+
+def _to_sensitive_refs(extracted: list[ExtractedRef]) -> list[SensitiveRef]:
+    return [SensitiveRef(value_ref=e.value_ref, field_type=e.field_type) for e in extracted]
 
 
 class JiraConnector:
@@ -73,13 +136,11 @@ class JiraConnector:
         session_id: str = "",
         sensitive_store: SensitiveValueStore | None = None,
     ) -> tuple[SanitizedTicketContext, list[SensitiveRef]]:
-        """Fetch, map allowlisted fields, extract sensitive values, redact, return sanitized context."""
+        """Fetch, map allowlisted fields, extract sensitive values, redact."""
         raw = self.fetch_raw(ticket_id)
         ticket = map_jira_fields(ticket_id, raw)
 
         sensitive_refs: list[SensitiveRef] = []
-
-        # Extract sensitive values if we have a session + store
         if session_id and sensitive_store:
             desc, desc_refs = extract_sensitive_values(
                 ticket.description_sanitized, session_id, sensitive_store,
@@ -101,10 +162,3 @@ class JiraConnector:
         ticket.comments_sanitized = [redact_text(c) for c in ticket.comments_sanitized]
 
         return ticket, sensitive_refs
-
-
-def _to_sensitive_refs(extracted: list[ExtractedRef]) -> list[SensitiveRef]:
-    return [
-        SensitiveRef(value_ref=e.value_ref, field_type=e.field_type)
-        for e in extracted
-    ]

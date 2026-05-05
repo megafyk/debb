@@ -6,8 +6,8 @@ import json
 import tempfile
 from pathlib import Path
 
-from evidence_gate.app.config import Settings
-from evidence_gate.audit.audit_logger import AuditLogger
+from evidence_gate.config import Settings
+from evidence_gate.audit_logger import AuditLogger
 from evidence_gate.connectors.jira_connector import JiraConnector
 from evidence_gate.connectors.metabase_connector import MetabaseConnector
 from evidence_gate.connectors.quickwit_connector import QuickwitConnector
@@ -17,8 +17,8 @@ from evidence_gate.mcp_server.tools import (
     _start_debugging_session,
     _submit_debug_report,
 )
-from evidence_gate.sessions.evidence_session_store import EvidenceSessionStore
-from evidence_gate.sessions.sensitive_value_store import SensitiveValueStore
+from evidence_gate.storage.evidence_session_store import EvidenceSessionStore
+from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 from evidence_gate.storage.evidence_request_store import EvidenceRequestStore
 from evidence_gate.storage.json_store import JsonStore
 from evidence_gate.storage.jsonl_event_store import JsonlEventStore

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from evidence_gate.contracts.masked_evidence_package import DiagnosticFeature
+from evidence_gate.contracts import DiagnosticFeature
 from evidence_gate.redaction.db_redactor import (
     build_masked_db_package,
     extract_diagnostic_features,
