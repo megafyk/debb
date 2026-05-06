@@ -1,21 +1,11 @@
 from __future__ import annotations
 
 from evidence_gate.contracts import DiagnosticFeature, MaskedEvidencePackage
-from evidence_gate.redaction.jira_redactor import redact_text
-
-
-def _redact_value(value: object) -> object:
-    if isinstance(value, str):
-        return redact_text(value)
-    if isinstance(value, dict):
-        return {k: _redact_value(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_redact_value(item) for item in value]
-    return value
+from evidence_gate.redaction.jira_redactor import redact_value
 
 
 def redact_db_rows(raw_rows: list[dict]) -> list[dict]:
-    return [{k: _redact_value(v) for k, v in row.items()} for row in raw_rows]
+    return [{k: redact_value(v) for k, v in row.items()} for row in raw_rows]
 
 
 def extract_diagnostic_features(rows: list[dict], entity: str) -> list[DiagnosticFeature]:

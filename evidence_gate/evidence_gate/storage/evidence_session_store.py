@@ -27,3 +27,12 @@ class EvidenceSessionStore:
             if data.get("ticket_id") == ticket_id:
                 return EvidenceSession.model_validate(data)
         return None
+
+    def find_idempotent(self, ticket_id: str, idempotency_key: str) -> EvidenceSession | None:
+        if not idempotency_key:
+            return None
+        for path in self._dir.glob("*.json"):
+            data = json.loads(path.read_text())
+            if data.get("ticket_id") == ticket_id and data.get("idempotency_key") == idempotency_key:
+                return EvidenceSession.model_validate(data)
+        return None

@@ -1,17 +1,7 @@
 from __future__ import annotations
 
 from evidence_gate.contracts import MaskedEvidencePackage
-from evidence_gate.redaction.jira_redactor import redact_text
-
-
-def _redact_value(value: object) -> object:
-    if isinstance(value, str):
-        return redact_text(value)
-    if isinstance(value, dict):
-        return {k: _redact_value(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_redact_value(item) for item in value]
-    return value
+from evidence_gate.redaction.jira_redactor import redact_value
 
 
 def redact_log_hits(
@@ -19,10 +9,7 @@ def redact_log_hits(
 ) -> list[dict]:
     redacted: list[dict] = []
     for hit in raw_hits:
-        row = {}
-        for field in fields_requested:
-            if field in hit:
-                row[field] = _redact_value(hit[field])
+        row = {field: redact_value(hit[field]) for field in fields_requested if field in hit}
         redacted.append(row)
     return redacted
 

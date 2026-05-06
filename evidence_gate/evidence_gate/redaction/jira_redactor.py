@@ -17,3 +17,14 @@ def redact_text(text: str) -> str:
     for pattern, replacement in _PATTERNS:
         text = pattern.sub(replacement, text)
     return text
+
+
+def redact_value(value: object) -> object:
+    """Recursively redact strings inside dicts/lists; leave other types alone."""
+    if isinstance(value, str):
+        return redact_text(value)
+    if isinstance(value, dict):
+        return {k: redact_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [redact_value(item) for item in value]
+    return value

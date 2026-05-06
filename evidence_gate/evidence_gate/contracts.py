@@ -43,6 +43,9 @@ class EvidenceSession(BaseModel):
     sensitive_refs: list[SensitiveRef] = []
     source_refs: list[str] = []
     audit_refs: list[str] = []
+    # Cached on first fetch so idempotent re-entry returns the same ticket
+    # without re-calling Jira and creating duplicate sensitive refs.
+    sanitized_ticket: SanitizedTicketContext | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

@@ -218,40 +218,31 @@ async def _start_debugging_session(
 ) -> list[TextContent]:
     ticket_id = _parse_ticket_id(ticket_id_or_url)
 
-    # Check for existing session with same idempotency key or ticket
-    if idempotency_key:
-        existing = session_store.find_by_ticket(ticket_id)
-        if existing and existing.idempotency_key == idempotency_key:
-            sanitized, _ = jira_connector.fetch_and_sanitize(
-                ticket_id, existing.evidence_session_id, sensitive_store,
-            )
-            ctx = EvidenceSessionContext(
-                evidence_session_id=existing.evidence_session_id,
-                ticket_id=ticket_id,
-                trace_id=existing.trace_id,
-                sanitized_ticket=sanitized,
-                sensitive_refs=existing.sensitive_refs,
-                source_refs=existing.source_refs,
-                audit_refs=existing.audit_refs,
-            )
-            return [TextContent(type="text", text=ctx.model_dump_json(indent=2))]
+    existing = session_store.find_idempotent(ticket_id, idempotency_key)
+    if existing and existing.sanitized_ticket is not None:
+        ctx = EvidenceSessionContext(
+            evidence_session_id=existing.evidence_session_id,
+            ticket_id=ticket_id,
+            trace_id=existing.trace_id,
+            sanitized_ticket=existing.sanitized_ticket,
+            sensitive_refs=existing.sensitive_refs,
+            source_refs=existing.source_refs,
+            audit_refs=existing.audit_refs,
+        )
+        return [TextContent(type="text", text=ctx.model_dump_json(indent=2))]
 
-    # Create new session
     session = EvidenceSession(
         ticket_id=ticket_id,
         trace_id=trace_id,
         idempotency_key=idempotency_key,
     )
 
-    # Fetch and sanitize Jira
     sanitized, sensitive_refs = jira_connector.fetch_and_sanitize(
         ticket_id, session.evidence_session_id, sensitive_store,
     )
-
-    # Store sensitive refs on session
     session.sensitive_refs = sensitive_refs
+    session.sanitized_ticket = sanitized
 
-    # Log audit event
     audit_event = audit_logger.log(
         session.evidence_session_id,
         "session_created",
@@ -267,10 +258,8 @@ async def _start_debugging_session(
     )
     session.audit_refs.append(ticket_audit.audit_id)
 
-    # Save session
     session_store.save(session)
 
-    # Build response
     ctx = EvidenceSessionContext(
         evidence_session_id=session.evidence_session_id,
         ticket_id=ticket_id,
@@ -292,6 +281,9 @@ async def _get_sanitized_jira_ticket(
     session = session_store.get(evidence_session_id)
     if not session:
         return [TextContent(type="text", text=f'{{"error": "Session not found: {evidence_session_id}"}}')]
+
+    if session.sanitized_ticket is not None:
+        return [TextContent(type="text", text=session.sanitized_ticket.model_dump_json(indent=2))]
 
     sanitized, _ = jira_connector.fetch_and_sanitize(
         session.ticket_id, evidence_session_id, sensitive_store,
