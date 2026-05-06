@@ -9,6 +9,8 @@ def _redact_value(value: object) -> object:
         return redact_text(value)
     if isinstance(value, dict):
         return {k: _redact_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_value(item) for item in value]
     return value
 
 

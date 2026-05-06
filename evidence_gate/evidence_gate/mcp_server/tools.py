@@ -169,6 +169,7 @@ def register_tools(server: Server) -> None:
             return await _get_sanitized_jira_ticket(
                 arguments["evidence_session_id"],
                 session_store,
+                sensitive_store,
                 jira_connector,
             )
         elif name == "create_quickwit_evidence_request":
@@ -285,13 +286,16 @@ async def _start_debugging_session(
 async def _get_sanitized_jira_ticket(
     evidence_session_id: str,
     session_store: EvidenceSessionStore,
+    sensitive_store: SensitiveValueStore,
     jira_connector: JiraConnector,
 ) -> list[TextContent]:
     session = session_store.get(evidence_session_id)
     if not session:
         return [TextContent(type="text", text=f'{{"error": "Session not found: {evidence_session_id}"}}')]
 
-    sanitized, _ = jira_connector.fetch_and_sanitize(session.ticket_id)
+    sanitized, _ = jira_connector.fetch_and_sanitize(
+        session.ticket_id, evidence_session_id, sensitive_store,
+    )
     return [TextContent(type="text", text=sanitized.model_dump_json(indent=2))]
 
 

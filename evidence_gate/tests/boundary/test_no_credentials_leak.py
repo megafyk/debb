@@ -37,7 +37,7 @@ _JIRA_RESPONSE = {
         "status": {"name": "Open"},
         "labels": [],
         "components": [],
-        "description": f"Customer victim@example.com called from +66999888777",
+        "description": "Customer victim@example.com called from +66999888777",
         "comment": {"comments": []},
         "created": "2026-05-01T00:00:00.000+0000",
         "updated": "2026-05-01T00:00:00.000+0000",

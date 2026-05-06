@@ -30,6 +30,36 @@ def test_nested_dict_redacted():
     assert "[REDACTED_EMAIL]" in str(nested)
 
 
+def test_list_field_redacted():
+    raw = [{
+        "headers": [
+            "Authorization: Bearer eyJabcdefghij1234567890.foo.bar",
+            "X-Email: leak@example.com",
+        ],
+    }]
+    redacted = redact_log_hits(raw, ["headers"])
+    flat = str(redacted[0]["headers"])
+    assert "leak@example.com" not in flat
+    assert "eyJabcdefghij" not in flat
+    assert "[REDACTED_EMAIL]" in flat
+    assert "[REDACTED_TOKEN]" in flat
+
+
+def test_dict_inside_list_redacted():
+    raw = [{"events": [{"actor": "user@x.com"}, {"actor": "ok"}]}]
+    redacted = redact_log_hits(raw, ["events"])
+    assert "user@x.com" not in str(redacted[0]["events"])
+    assert redacted[0]["events"][0]["actor"] == "[REDACTED_EMAIL]"
+    assert redacted[0]["events"][1]["actor"] == "ok"
+
+
+def test_deeply_nested_structure():
+    raw = [{"a": {"b": [{"c": ["touch@me.com"]}]}}]
+    redacted = redact_log_hits(raw, ["a"])
+    assert "touch@me.com" not in str(redacted)
+    assert "[REDACTED_EMAIL]" in str(redacted)
+
+
 def test_build_masked_package():
     hits = [
         {"timestamp": "2026-01-01T00:01:00Z", "error_code": "FAIL"},

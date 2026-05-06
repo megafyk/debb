@@ -1,5 +1,14 @@
 {
   "mcpServers": {
+    "evidence_gate": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--package", "evidence-gate",
+        "python", "-m", "evidence_gate.main"
+      ],
+      "type": "stdio"
+    },
     "code-review-graph": {
       "command": "uvx",
       "args": [

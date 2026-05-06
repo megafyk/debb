@@ -2,7 +2,6 @@ import asyncio
 import json
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
 
 from evidence_gate.audit_logger import AuditLogger
 from evidence_gate.connectors.jira_connector import JiraConnector
@@ -58,13 +57,40 @@ def test_get_sanitized_jira_ticket():
         session_id = json.loads(result[0].text)["evidence_session_id"]
 
         # Then get the ticket
-        session_store = deps[0]
-        jira = deps[3]
+        session_store, sensitive_store, _audit, jira = deps
         result2 = asyncio.run(
-            _get_sanitized_jira_ticket(session_id, session_store, jira)
+            _get_sanitized_jira_ticket(session_id, session_store, sensitive_store, jira)
         )
         data = json.loads(result2[0].text)
         assert data["ticket_id"] == "BUG-123"
+        # Raw PII never appears in the response
+        flat = result2[0].text
+        assert "somchai@example.com" not in flat
+        assert "support@company.com" not in flat
+        assert "+66812345678" not in flat
+        # Refs follow the SECURE_VALUE_REF format established by start_debugging_session,
+        # not the generic [REDACTED_*] placeholder. This keeps the agent's view consistent
+        # so it can use matches_sensitive_ref filters.
+        assert "SECURE_VALUE_REF_email_" in flat
+        assert "SECURE_VALUE_REF_phone_number_" in flat
+
+
+def test_get_sanitized_jira_ticket_consistent_with_start():
+    """The ref format from get_sanitized_jira_ticket must match start_debugging_session."""
+    with tempfile.TemporaryDirectory() as tmp:
+        deps = _make_deps(Path(tmp))
+        first = asyncio.run(_start_debugging_session("BUG-123", "", "", *deps))
+        first_data = json.loads(first[0].text)
+        session_id = first_data["evidence_session_id"]
+
+        session_store, sensitive_store, _audit, jira = deps
+        second = asyncio.run(
+            _get_sanitized_jira_ticket(session_id, session_store, sensitive_store, jira)
+        )
+        second_data = json.loads(second[0].text)
+        # Both responses redact PII via the same ref scheme
+        assert "SECURE_VALUE_REF_" in first_data["sanitized_ticket"]["description_sanitized"]
+        assert "SECURE_VALUE_REF_" in second_data["description_sanitized"]
 
 
 def test_list_evidence_templates():
@@ -83,8 +109,9 @@ def test_list_evidence_templates():
 def test_get_sanitized_jira_ticket_missing_session():
     with tempfile.TemporaryDirectory() as tmp:
         deps = _make_deps(Path(tmp))
+        session_store, sensitive_store, _audit, jira = deps
         result = asyncio.run(
-            _get_sanitized_jira_ticket("nonexistent", deps[0], deps[3])
+            _get_sanitized_jira_ticket("nonexistent", session_store, sensitive_store, jira)
         )
         data = json.loads(result[0].text)
         assert "error" in data

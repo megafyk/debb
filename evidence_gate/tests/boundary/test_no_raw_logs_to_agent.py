@@ -87,19 +87,47 @@ def test_masked_package_has_no_raw_values():
 def test_quickwit_credentials_not_in_package():
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
+        # Settings carries credentials but empty quickwit_url drives fixture mode
+        # (is_live = quickwit_enabled and quickwit_url). Even with creds set on
+        # the connector's settings, they must not appear in the masked package.
         settings = Settings(
-            quickwit_url="http://quickwit.internal:7280",
+            quickwit_url="",
             quickwit_username="qw_admin_secret",
             quickwit_password="super_secret_pw_12345",
         )
-        # Force fixture mode by overriding is_live — but we can't easily since
-        # is_live is a property. Instead, just use empty url for execution
-        # but verify credentials set on settings don't leak.
-        settings_fixture = Settings(quickwit_url="", quickwit_username="", quickwit_password="")
-        pkg, _, _ = _run_pipeline(tmp_path, settings_fixture)
+        pkg, _, _ = _run_pipeline(tmp_path, settings)
 
         pkg_json = pkg.model_dump_json()
         assert "qw_admin_secret" not in pkg_json
         assert "super_secret_pw_12345" not in pkg_json
-        # Also verify the url doesn't leak
-        assert "quickwit.internal" not in pkg_json
+
+
+def test_nested_log_fields_are_redacted():
+    """Quickwit hits may contain nested dicts/lists (headers, payloads, structured events).
+    Redaction must recurse — raw PII must not pass through nested containers."""
+    from evidence_gate.redaction.log_redactor import redact_log_hits
+
+    raw_hits = [
+        {
+            "service": "auth",
+            "headers": [
+                "Authorization: Bearer eyJleak1234567890abcdef.x.y",
+                "X-User-Email: leak@example.com",
+            ],
+            "context": {
+                "actor": "actor@hidden.com",
+                "phone": "+1-555-987-6543",
+                "trail": [{"step": "found", "who": "found@me.com"}],
+            },
+        },
+    ]
+    redacted = redact_log_hits(raw_hits, ["service", "headers", "context"])
+    flat = str(redacted)
+    for raw_value in (
+        "leak@example.com",
+        "actor@hidden.com",
+        "found@me.com",
+        "555-987-6543",
+        "eyJleak1234567890",
+    ):
+        assert raw_value not in flat, f"{raw_value!r} leaked through nested redaction"

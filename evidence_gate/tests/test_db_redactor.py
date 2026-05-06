@@ -22,6 +22,31 @@ def test_redact_db_rows_preserves_numbers():
     assert redacted[0]["locked"] is False
 
 
+def test_redact_db_rows_recurses_into_dict_column():
+    rows = [{"id": 1, "metadata": {"contact_email": "secret@evil.com", "note": "ok"}}]
+    redacted = redact_db_rows(rows)
+    flat = str(redacted[0]["metadata"])
+    assert "secret@evil.com" not in flat
+    assert "[REDACTED_EMAIL]" in flat
+    assert redacted[0]["metadata"]["note"] == "ok"
+
+
+def test_redact_db_rows_recurses_into_list_column():
+    rows = [{"id": 1, "tags": ["needs-review", "email: trail@bad.io"]}]
+    redacted = redact_db_rows(rows)
+    flat = str(redacted[0]["tags"])
+    assert "trail@bad.io" not in flat
+    assert "[REDACTED_EMAIL]" in flat
+
+
+def test_redact_db_rows_deeply_nested():
+    rows = [{"audit": [{"who": "leak@x.com", "where": {"phone": "+1-555-123-4567"}}]}]
+    redacted = redact_db_rows(rows)
+    flat = str(redacted[0]["audit"])
+    assert "leak@x.com" not in flat
+    assert "555-123-4567" not in flat
+
+
 def test_extract_features_account():
     rows = [{"status": "active", "locked": False, "disabled": False}]
     features = extract_diagnostic_features(rows, "account")

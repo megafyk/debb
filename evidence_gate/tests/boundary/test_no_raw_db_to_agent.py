@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import tempfile
 from pathlib import Path
 
@@ -9,8 +8,7 @@ from evidence_gate.config import Settings
 from evidence_gate.audit_logger import AuditLogger
 from evidence_gate.connectors.metabase_connector import MetabaseConnector
 from evidence_gate.contracts import EvidenceRequest
-from evidence_gate.contracts import MetabaseQueryPlan
-from evidence_gate.redaction.db_redactor import build_masked_db_package, extract_diagnostic_features, redact_db_rows
+from evidence_gate.redaction.db_redactor import redact_db_rows
 from evidence_gate.request_services.evidence_executor import execute_metabase_request
 from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 from evidence_gate.storage.evidence_request_store import EvidenceRequestStore
@@ -74,3 +72,34 @@ def test_raw_db_rows_not_in_masked_package():
         # Masked package only has redacted/aggregate data, source_type is metabase_query
         assert pkg.source_type == "metabase_query"
         assert pkg.masked_data.get("row_count") is not None
+
+
+def test_nested_db_columns_are_redacted():
+    """DB rows may contain JSON-typed columns (dicts) or array columns (lists).
+    Redaction must recurse — raw PII must not pass through nested columns."""
+    raw_rows = [
+        {
+            "id": 1,
+            "status": "active",
+            "metadata": {
+                "contact_email": "secret@evil.com",
+                "tags": ["billing", "phone: +66-812-345-6789"],
+            },
+            "audit_trail": [
+                {"actor": "ops@internal.com", "action": "lock"},
+                {"actor": "ops2@internal.com", "action": "unlock"},
+            ],
+        },
+    ]
+    redacted_rows = redact_db_rows(raw_rows)
+    flat = str(redacted_rows)
+    for raw_value in (
+        "secret@evil.com",
+        "ops@internal.com",
+        "ops2@internal.com",
+        "812-345-6789",
+    ):
+        assert raw_value not in flat, f"{raw_value!r} leaked through nested DB redaction"
+    # Non-PII data is preserved
+    assert redacted_rows[0]["status"] == "active"
+    assert redacted_rows[0]["metadata"]["tags"][0] == "billing"
