@@ -1,0 +1,28 @@
+{
+  "eval_id": 3,
+  "eval_name": "delete-with-confirmation",
+  "expectations": [
+    {
+      "text": "registry.json has zero repo entries (repos array is empty)",
+      "passed": true,
+      "evidence": "repos=[]"
+    },
+    {
+      "text": "notes.md indicates the agent ran 'show payments-api' (or equivalent) BEFORE the delete",
+      "passed": true,
+      "evidence": "show idx=161, delete idx=334"
+    },
+    {
+      "text": "notes.md records an explicit user-confirmation step before --confirm was used",
+      "passed": true,
+      "evidence": "confirmation phrase present"
+    },
+    {
+      "text": "notes.md shows the agent ran scripts/registry.py delete payments-api --confirm",
+      "passed": true,
+      "evidence": "found"
+    }
+  ],
+  "passed": 4,
+  "total": 4
+}

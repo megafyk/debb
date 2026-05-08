@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "repos": [
+    {
+      "name": "payments-api",
+      "description": "Card auth and refunds service",
+      "path": "/tmp/dbg-eval-2/payments-api",
+      "tags": [
+        "payments",
+        "card"
+      ],
+      "connection": [
+        {
+          "environment": "production",
+          "sources": [
+            {
+              "name": "quickwit",
+              "metadata": {
+                "id": 47,
+                "uid": "pay9ldn3"
+              }
+            },
+            {
+              "name": "metabase",
+              "metadata": {
+                "database": "payments_prod"
+              }
+            },
+            {
+              "name": "prometheus",
+              "metadata": {
+                "job": "payments-api",
+                "namespace": "payments-prod"
+              }
+            }
+          ]
+        },
+        {
+          "environment": "uat",
+          "sources": [
+            {
+              "name": "quickwit",
+              "metadata": {
+                "id": 48,
+                "uid": "pay9uat2"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

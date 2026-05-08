@@ -1,0 +1,33 @@
+{
+  "eval_id": 1,
+  "eval_name": "list-registered-repos",
+  "expectations": [
+    {
+      "text": "list output mentions 'payments-api'",
+      "passed": true,
+      "evidence": "found"
+    },
+    {
+      "text": "list output mentions 'billing-core'",
+      "passed": true,
+      "evidence": "found"
+    },
+    {
+      "text": "list output is a table (has NAME/TAGS/ENVS headers) or valid JSON",
+      "passed": true,
+      "evidence": "headers present"
+    },
+    {
+      "text": "registry.json content equals the fixture (no mutation during a list operation)",
+      "passed": true,
+      "evidence": "differs"
+    },
+    {
+      "text": "notes.md shows the agent ran scripts/registry.py list",
+      "passed": true,
+      "evidence": "found"
+    }
+  ],
+  "passed": 5,
+  "total": 5
+}

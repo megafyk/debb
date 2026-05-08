@@ -1,0 +1,33 @@
+{
+  "skill_name": "debug-repo",
+  "evals": [
+    {
+      "id": 0,
+      "name": "register-payments-api",
+      "prompt": "I just cloned our payments-api repo to /tmp/debug-repo-eval/payments-api. It's the service that handles card auth and refunds. In production it logs to Quickwit index id 47 with uid 'pay9ldn3' and its app DB on Metabase is called 'payments_prod'. In UAT the Quickwit index id is 48 with uid 'pay9uat2'. Tag it 'payments' and 'card'. Please register it in the debug-jira repo registry.",
+      "expected_output": "A new entry named 'payments-api' added to .claude/skills/debug-repo/registry.json with description, path /tmp/debug-repo-eval/payments-api, tags ['payments','card'], and two connection blocks (production with quickwit+metabase, uat with quickwit). The skill should run scripts/registry.py register, not hand-edit JSON.",
+      "files": []
+    },
+    {
+      "id": 1,
+      "name": "list-registered-repos",
+      "prompt": "Which service repos do we have registered for debug-jira right now? Just show me a quick summary.",
+      "expected_output": "The skill runs scripts/registry.py list (without --json by default) and shows the table to the user. If the registry is empty, it surfaces that fact and offers to register one.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "update-add-prometheus-source",
+      "prompt": "For the payments-api repo, add a prometheus source to the production connection. The job label is 'payments-api' and the namespace is 'payments-prod'.",
+      "expected_output": "The skill runs scripts/registry.py update payments-api with a JSON patch that merges a prometheus source into the production connection block. It does NOT clobber the existing quickwit/metabase sources. After the update, it shows the diff to the user.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "name": "delete-with-confirmation",
+      "prompt": "We deprecated the payments-api service last sprint and migrated everything to billing-core. Please remove payments-api from our debug registry.",
+      "expected_output": "The skill shows the entry first, asks for explicit confirmation, then runs scripts/registry.py delete payments-api --confirm. It must NOT pass --confirm without first confirming with the user.",
+      "files": []
+    }
+  ]
+}

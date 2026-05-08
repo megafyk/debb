@@ -1,0 +1,4 @@
+NAME          TAGS           ENVS        SOURCES            PATH                        
+------------  -------------  ----------  -----------------  ----------------------------
+billing-core  billing        production  quickwit           /tmp/dbg-eval-1/billing-core
+payments-api  payments,card  production  metabase,quickwit  /tmp/dbg-eval-1/payments-api

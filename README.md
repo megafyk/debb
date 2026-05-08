@@ -96,7 +96,10 @@ This runs `start_debugging_session → query plans → evidence requests → mas
 ## Project Structure
 
 ```
-.claude/skills/debug-jira/   # Skill definition (SKILL.md, schemas, prompts, templates)
+.claude/skills/
+  debug-jira/                # Main skill: Jira ticket → masked evidence → report
+  debug-repo/                # Registry skill: register/list/update/delete service repos
+                             # consumed by debug-jira; mirrors into code-review-graph
 evidence_gate/
   evidence_gate/
     main.py                  # MCP server entry point
@@ -108,10 +111,10 @@ evidence_gate/
     request_services/        # Schema/safety/bounds checks, executor, report reviewer
     storage/                 # Session, sensitive-value, request, raw + masked stores
     mcp_server/              # MCP stdio server, tool registration (8 tools)
-  tests/                     # 184 tests
+  tests/                     # 198 tests
     boundary/                # 28 trust-boundary tests
 docs/
-  debugging_system_implementation_plan.md
+  debugging_system_implementation_plan.md  # Section 3 main flow, 3.1 alternative
   log.md                     # ADR (architecture decision record)
 ```
 
@@ -121,12 +124,29 @@ docs/
 2. Agent invokes the **Debug Jira** skill
 3. Skill calls `start_debugging_session` → gets a session ID
 4. Skill calls `get_sanitized_jira_ticket` → gets PII-redacted ticket context
-5. Agent builds query plans (log searches, DB lookups) grounded in code
-6. Skill submits plans → evidence_gate validates (schema, safety, bounds)
-7. evidence_gate executes against Quickwit/Metabase, redacts results
-8. Agent receives only masked evidence packages
-9. Agent writes a debug report citing evidence IDs and code paths
-10. Skill submits report → programmatic review checks for leakage
+5. Skill consults the **debug-repo** registry to pick candidate service repos (see [Registering service repos](#registering-service-repos))
+6. Agent builds query plans (log searches, DB lookups) grounded in code
+7. Skill submits plans → evidence_gate validates (schema, safety, bounds)
+8. evidence_gate executes against Quickwit/Metabase, redacts results
+9. Agent receives only masked evidence packages
+10. Agent writes a debug report citing evidence IDs and code paths
+11. Skill submits report → programmatic review checks for leakage
+
+## Registering service repos
+
+`debug-jira` only scans repos listed in the **debug-repo registry** at `.claude/skills/debug-repo/registry.json`. Each entry records a service's local path, domain tags, and per-environment connections (Quickwit index, Metabase database, Prometheus job). The registry is gitignored — paths are per-developer.
+
+When `debug-jira` cannot find a candidate service in the registry, the recovery path is the **debug-repo** skill, not a path guess:
+
+```bash
+# Interactive: register a new service repo
+/debug-repo
+
+# Or, if the intent is unambiguous:
+"register repo payments-api"
+```
+
+`register` and `delete` mirror the change into `~/.code-review-graph/registry.json` and (on register) parse the repo into the graph so it is queryable from the next `debug-jira` run. See **Section 3.1** of [docs/debugging_system_implementation_plan.md](docs/debugging_system_implementation_plan.md) for the full flow and the trust-boundary contract.
 
 ## Configuration
 
@@ -149,7 +169,7 @@ When credentials are not set, connectors run in **fixture mode** (return synthet
 ## Development
 
 ```bash
-make test            # Run all 184 tests
+make test            # Run all 198 tests
 make test-boundary   # Run 28 boundary tests
 make lint            # Syntax + import check
 

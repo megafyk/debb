@@ -11,20 +11,21 @@ allowed-tools: Read, Grep, Glob, Bash
 1. Parse the Jira ticket ID or URL.
 2. Call evidence_gate MCP `start_debugging_session`.
 3. Use only the returned sanitized ticket context.
-4. Build `service_repo_map.md`.
-5. Read relevant repository instructions before scanning code.
-6. Use code-review-graph when available.
-7. **Clarify missing inputs before planning.** If the sanitized ticket and code scan do not yield enough information to build precise query plans, pause and ask the user for the missing inputs in a single, numbered list. Do not guess, invent placeholders, or build speculative plans. Resume only after the user replies. Typical gaps to surface:
+4. Enumerate registered repositories via the code-review-graph MCP `list_repos_tool`, then select candidate repos using sanitized Jira components, service hints, error codes, and ownership metadata. Do not scan repos that are not in the registry.
+5. Build `service_repo_map.md` from the selected candidate repos.
+6. Read relevant repository instructions before scanning code.
+7. **Refresh the code-review-graph index for every candidate repo before scanning.** For each entry selected in step 4, run `code-review-graph update --repo <path>` (incremental) and fall back to `code-review-graph build --repo <path>` if the graph is missing, corrupt, or far behind HEAD~1. Verify with `code-review-graph status --repo <path>`. The registry's registration-time build only seeds the graph once — the developer's checkout may have advanced since, so a stale index will silently drop new files, functions, log emitters, and tests from semantic_search_nodes / query_graph results. Then use the code-review-graph MCP tools for the scan; only fall back to Grep/Glob/Read for repos where the graph is unavailable after the refresh.
+8. **Clarify missing inputs before planning.** If the sanitized ticket and code scan do not yield enough information to build precise query plans, pause and ask the user for the missing inputs in a single, numbered list. Do not guess, invent placeholders, or build speculative plans. Resume only after the user replies. Typical gaps to surface:
    - Time window (start/end timestamps or relative window) for log/metric queries.
    - Affected service(s), environment (prod/staging), region, or tenant scope.
    - Known correlation identifiers (request IDs, user IDs, order IDs, trace IDs) — ask for masked or evidence-ID forms only, never raw sensitive values.
    - Reproduction signal (specific error string, status code, endpoint, job name) the agent should pivot on.
    - Which Quickwit indices or Metabase dashboards/questions are in scope.
    - Severity, blast radius, or business impact if the report needs it.
-8. Build code-grounded Quickwit and Metabase query plans.
-9. Submit query plans to evidence_gate.
-10. Analyze only masked evidence packages.
-11. Write the debug report from `templates/debug_report.md`.
+9. Build code-grounded Quickwit and Metabase query plans. Quickwit `fields_requested` must be selected from the `log_fields` candidate pool produced by the code-scan step (step 7) — see `prompts/quickwit_query_planning.md`. Metabase `facts_requested` must come from `db_entities` / `sql_references_from_code` recorded in the same step.
+10. Submit query plans to evidence_gate.
+11. Analyze only masked evidence packages.
+12. Write the debug report from `templates/debug_report.md`.
 
 ## Hard safety rules
 

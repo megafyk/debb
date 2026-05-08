@@ -23,6 +23,44 @@ Tracks changes and implementation progress for the AI-assisted production debugg
 
 ## Changelog
 
+### 2026-05-08
+
+#### Quickwit logs now flow through Grafana `/ds/query`
+**Context:** The Quickwit connector previously called Quickwit's native
+search API (`/api/v1/{index}/search`). Production reads now go through
+Grafana, which proxies to Quickwit as a registered data source.
+
+**Decision:** Reshape `QuickwitQueryPlan` to mirror Grafana's
+`MetricRequest` at the wire boundary while keeping plan-level helpers
+(`filters`, `fields_requested`, `query_intent`, `max_hits`):
+- `index_hint` → `datasource_uid` (Grafana data source UID)
+- `time_window{start,end}` → top-level `from`/`to` (ISO 8601, epoch ms,
+  or Grafana relative like `now-1h`)
+- Added `ref_id`, `max_data_points`, `interval_ms` for the per-query slot
+- Connector posts to `<quickwit_url>/api/ds/query` with
+  `{from, to, queries:[{refId, datasource:{uid}, query:<Lucene>,
+  format:"logs", ...}]}` and parses
+  `QueryDataResponse.results[refId].frames` into row dicts
+- Bounds checker still narrows ISO `from`/`to` over 24h; epoch ms /
+  relative strings pass through unchanged
+
+**Replan signal:** Connector now returns
+`QuickwitQueryResult{hits, is_valuable, reason}`. `is_valuable=False`
+(`reason="zero_hits"`) tells the planning agent to revise the plan and
+resubmit; the `debug-jira` skill prompt caps replans at 3 attempts.
+
+**Consequences:**
+- Existing `quickwit_url`/`quickwit_username`/`quickwit_password` env
+  vars now point at Grafana with basic auth — variable names misleading,
+  no rename in this change.
+- Per-`queries[i]` body uses a reasonable Quickwit-Grafana-plugin shape
+  (`query`/`datasource`/`format='logs'`); revisit when the plugin's
+  exact field names are confirmed against a working Grafana panel.
+- Skill-prompt change: planner picks `fields_requested` from the
+  sanitized Jira ticket plus log statements grepped in the mapped
+  service repo — no guessing.
+- 198 tests passing (added 2 in `test_contracts.py`).
+
 ### 2026-05-05
 
 #### Directory consolidation

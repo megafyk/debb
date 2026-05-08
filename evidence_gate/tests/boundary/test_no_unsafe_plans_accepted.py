@@ -23,8 +23,9 @@ def _base_quickwit():
     return {
         "evidence_session_id": "ESESS-1",
         "service": "login-service",
-        "index_hint": "login-service-prod",
-        "time_window": {"start": "2026-01-01T00:00:00+00:00", "end": "2026-01-01T02:00:00+00:00"},
+        "datasource_uid": "login-service-prod",
+        "from": "2026-01-01T00:00:00+00:00",
+        "to": "2026-01-01T02:00:00+00:00",
         "query_intent": "Find errors",
         "filters": [{"field": "service", "op": "=", "value": "login-service"}],
         "fields_requested": ["timestamp"],

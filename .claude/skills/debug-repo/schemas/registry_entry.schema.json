@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ServiceRepoEntry",
+  "description": "One service repository registered with the debb debugging system.",
+  "type": "object",
+  "required": ["name", "description", "path", "tags", "connection"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+      "description": "Unique repo identifier. Lowercase, kebab-case or snake_case, 1-64 chars."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Short purpose summary."
+    },
+    "path": {
+      "type": "string",
+      "pattern": "^/",
+      "description": "Absolute filesystem path to the repo. Must exist at registration time."
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "description": "Domain categorization tags (lowercase kebab-case recommended)."
+    },
+    "connection": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/connection_block" },
+      "minItems": 1,
+      "description": "Per-environment connection blocks."
+    }
+  },
+  "definitions": {
+    "connection_block": {
+      "type": "object",
+      "required": ["environment"],
+      "additionalProperties": false,
+      "properties": {
+        "environment": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Environment name. Conventional values: production, uat, staging, dev."
+        },
+        "sources": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/source" },
+          "description": "Optional list of data-source connections for this environment."
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": ["name", "metadata"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "enum": ["quickwit", "metabase", "prometheus"],
+          "description": "Source type. Each value has a typed metadata schema."
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Source-specific metadata. See source_<name>.schema.json."
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "name": { "const": "quickwit" },
+            "metadata": { "$ref": "source_quickwit.schema.json" }
+          }
+        },
+        {
+          "properties": {
+            "name": { "const": "metabase" },
+            "metadata": { "$ref": "source_metabase.schema.json" }
+          }
+        },
+        {
+          "properties": {
+            "name": { "const": "prometheus" },
+            "metadata": { "$ref": "source_prometheus.schema.json" }
+          }
+        }
+      ]
+    }
+  }
+}

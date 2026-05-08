@@ -8,9 +8,9 @@ from evidence_gate.contracts import (
     MetabaseQueryPlan,
     QueryFilter,
     QuickwitQueryPlan,
+    QuickwitQueryResult,
     SanitizedTicketContext,
     SensitiveRef,
-    TimeWindow,
 )
 
 
@@ -57,14 +57,24 @@ def test_quickwit_query_plan():
     plan = QuickwitQueryPlan(
         evidence_session_id="ESESS-1",
         service="login-service",
-        index_hint="login-service-prod",
-        time_window=TimeWindow(start="2026-01-01T00:00:00Z", end="2026-01-01T01:00:00Z"),
+        datasource_uid="login-service-prod",
+        from_="2026-01-01T00:00:00Z",
+        to="2026-01-01T01:00:00Z",
         query_intent="Find login failures",
         filters=[QueryFilter(field="service", op="=", value="login-service")],
         fields_requested=["timestamp", "error_code"],
         max_hits=100,
     )
     assert plan.type == "quickwit_query_plan"
+    assert plan.from_ == "2026-01-01T00:00:00Z"
+    # Plan serialises with the spec field name 'from'.
+    assert plan.model_dump(by_alias=True)["from"] == "2026-01-01T00:00:00Z"
+
+
+def test_quickwit_query_result():
+    result = QuickwitQueryResult(hits=[], is_valuable=False, reason="zero_hits")
+    assert result.is_valuable is False
+    assert result.reason == "zero_hits"
 
 
 def test_metabase_query_plan():

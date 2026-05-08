@@ -102,9 +102,20 @@ Agent-hidden data:
 9. Skill creates service_repo_map.md/json from sanitized Jira context.
 
 10. Skill scans relevant repositories.
-    For each repository:
+    - call code-review-graph MCP `list_repos_tool` to enumerate repositories registered in the graph registry
+    - select candidate repos from the registry using sanitized Jira components, service hints, error codes, and ownership metadata
+    For each selected repository:
     - read AGENTS.md / CLAUDE.md first
-    - use code-review-graph if available
+    - **refresh the code-review-graph index before any graph query**:
+      `code-review-graph update --repo <path>` (incremental), falling back to
+      `code-review-graph build --repo <path>` if the graph is missing,
+      corrupt, or far behind HEAD~1. Verify with `status`. The
+      registration-time build only seeds the graph; the developer's checkout
+      may have advanced since, and a stale index drops new files / functions
+      / log emitters / tests from query results.
+    - use code-review-graph if available; if both update and build fail for
+      a repo, mark `code_review_graph_available: false` and fall back to
+      Grep/Glob — never query a stale graph
     - identify suspected files/functions/endpoints/entities/log fields
 
 11. Skill creates code-grounded query plans:
@@ -118,6 +129,93 @@ Agent-hidden data:
 14. Skill analyzes sanitized Jira context, code findings, service map, and masked evidence.
 
 15. Skill writes an engineer-facing debugging report.
+```
+
+## 3.1 Alternative Workflow — Register a Repo via debug-repo Skill
+
+The main workflow assumes every candidate service is already in the registry
+consumed by step 10. When it isn't — new service, missing entry, stale path
+— the recovery path is the **debug-repo** skill, which is the only surface
+that mutates the registry. Without this path the agent would either guess a
+repo path (forbidden — see Section 14 rules) or skip a real candidate.
+
+When to take this path:
+
+```text
+- list_repos_tool (or scripts/registry.py list --json) returns no match for
+  the service named in the sanitized Jira context.
+- A new service needs onboarding before debug-jira can scan it.
+- The existing entry has the wrong path, tags, or connection[] for the
+  environment in scope (e.g. wrong quickwit index for production).
+```
+
+Steps:
+
+```text
+1. Pause the debug-jira session. Do not invent a repo path or bypass the
+   registry; record the gap so it can be picked up after the registry is
+   updated.
+
+2. Engineer invokes the debug-repo skill:
+   /debug-repo            (interactive menu)
+   "register repo <name>" (intent-only invocation)
+
+3. debug-repo collects, one field at a time:
+   - name (unique)
+   - description
+   - path (absolute, must exist)
+   - tags[] (kebab-case domain tags)
+   - connection[] = [{ environment, sources[] }]
+       where each source.metadata is typed:
+         quickwit   → { id, uid, ... }
+         metabase   → { database, ... }
+         prometheus → { job, ... }
+
+4. debug-repo invokes the helper script (never hand-edits the file):
+   python .claude/skills/debug-repo/scripts/registry.py register   < entry.json
+   The script does atomic temp-file rename into:
+     .claude/skills/debug-repo/registry.json
+   register fails if name collides; use update <name> for corrections.
+
+5. The same call mirrors into the code-review-graph multi-repo registry at
+   ~/.code-review-graph/registry.json:
+     code-review-graph register <path> --alias <name>
+     code-review-graph build --repo <path>
+   so the repo is graph-queryable from debug-jira immediately. This
+   registration-time build is a **seed only** — debug-jira will run
+   `code-review-graph update --repo <path>` (or `build`) again for every
+   candidate repo at the start of each scan, so the index reflects HEAD at
+   debug time, not registration time (see Section 3 step 10 and Section 7.8).
+   Sync is best-effort; if it fails the local register still succeeded.
+
+6. Re-run debug-jira. Step 10 of the main workflow now finds the entry and
+   the original session resumes from the repo-mapping step.
+```
+
+Rules carried from debug-repo:
+
+```text
+- Path must be absolute and exist on this machine.
+- Source metadata is typed: quickwit needs id+uid, metabase needs database,
+  prometheus needs job. Reject incomplete entries.
+- register must fail on existing name; never silently overwrite. Use update.
+- delete requires explicit confirmation and removes from both registries.
+- registry.json is gitignored (paths are per-developer); teams share a seed
+  registry.example.json with stable fields and developers fill in path
+  locally.
+- --no-graph-sync skips both CRG steps. --no-graph-build registers in CRG
+  but defers the parse — useful for very large repos.
+```
+
+Boundary:
+
+```text
+debug-repo never calls Jira, Quickwit, Metabase, evidence_gate, or any
+production system. It mutates only:
+  .claude/skills/debug-repo/registry.json   (this repo)
+  ~/.code-review-graph/registry.json        (best-effort mirror)
+The trust boundary in Section 2 is unchanged — every production access still
+flows through evidence_gate.
 ```
 
 ## 4. Repository Layout
@@ -337,13 +435,14 @@ allowed-tools: Read, Grep, Glob, Bash
 1. Parse the Jira ticket ID or URL.
 2. Call evidence_gate MCP `start_debugging_session`.
 3. Use only the returned sanitized ticket context.
-4. Build `service_repo_map.md`.
-5. Read relevant repository instructions before scanning code.
-6. Use code-review-graph when available.
-7. Build code-grounded Quickwit and Metabase query plans.
-8. Submit query plans to evidence_gate.
-9. Analyze only masked evidence packages.
-10. Write the debug report from `templates/debug_report.md`.
+4. Enumerate registered repositories via the code-review-graph MCP `list_repos_tool`, then select candidate repos using sanitized Jira components, service hints, error codes, and ownership metadata.
+5. Build `service_repo_map.md` from the selected candidate repos.
+6. Read relevant repository instructions before scanning code.
+7. Use code-review-graph when available.
+8. Build code-grounded Quickwit and Metabase query plans.
+9. Submit query plans to evidence_gate.
+10. Analyze only masked evidence packages.
+11. Write the debug report from `templates/debug_report.md`.
 
 ## Hard safety rules
 
@@ -499,14 +598,24 @@ When `code-review-graph` is available, the Skill must use it before broad `Read`
 Recommended agent sequence:
 
 ```text
-1. Run or ask for graph status.
-2. Build or update the graph if needed.
-3. Call get_minimal_context for the ticket/debugging task.
-4. Use semantic or graph search to find candidate files and symbols.
-5. Query callers, callees, tests, imports, and impact radius.
-6. Read only targeted files returned by graph queries.
-7. Extract endpoints, error codes, log fields, DB entities, SQL references, and related tests.
-8. Record graph queries and selected files in service_repo_map.
+1. Run code-review-graph status --repo <path> for the candidate repo.
+2. Refresh the graph for THIS repo before any query — mandatory in a
+   debug-jira session, not optional:
+     code-review-graph update --repo <path>     # incremental, preferred
+     code-review-graph build --repo <path>      # fallback if update fails
+                                                # or graph is missing
+   The registration-time build only seeds the graph; the developer's
+   checkout may have advanced since. If both commands fail, mark
+   code_review_graph_available: false and skip to step 8 with the
+   Grep/Glob fallback — never query a stale graph silently.
+3. Re-run status to confirm the index reflects HEAD.
+4. Call get_minimal_context for the ticket/debugging task.
+5. Use semantic or graph search to find candidate files and symbols.
+6. Query callers, callees, tests, imports, and impact radius.
+7. Read only targeted files returned by graph queries.
+8. Extract endpoints, error codes, log fields, DB entities, SQL references, and related tests.
+9. Record graph queries (including the refresh command) and selected
+   files in service_repo_map.
 ```
 
 The service repo map should include:

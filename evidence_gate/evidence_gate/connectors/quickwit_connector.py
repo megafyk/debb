@@ -7,7 +7,7 @@ import httpx
 from evidence_gate.config import Settings
 from evidence_gate.audit_logger import AuditLogger
 from evidence_gate.connectors.auth import quickwit_basic_auth_header
-from evidence_gate.contracts import QuickwitQueryPlan
+from evidence_gate.contracts import QuickwitQueryPlan, QuickwitQueryResult
 from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 
 
@@ -28,25 +28,32 @@ class QuickwitConnector:
 
     async def execute(
         self, plan: QuickwitQueryPlan, evidence_session_id: str
-    ) -> list[dict]:
+    ) -> QuickwitQueryResult:
         body = self._build_search_body(plan, evidence_session_id)
 
         if self.is_live:
-            url = f"{self._settings.quickwit_url}/api/v1/{plan.index_hint}/search"
+            url = f"{self._settings.quickwit_url}/api/ds/query"
             headers = quickwit_basic_auth_header(self._settings)
             async with httpx.AsyncClient() as client:
                 resp = await client.post(url, json=body, headers=headers)
                 resp.raise_for_status()
-                hits = resp.json().get("hits", [])
+                hits = self._parse_grafana_response(resp.json(), plan.ref_id)
         else:
             hits = self._fixture_hits(plan.fields_requested)
+
+        is_valuable = len(hits) > 0
+        reason = "" if is_valuable else "zero_hits"
 
         self._audit.log(
             evidence_session_id,
             "quickwit_query_executed",
-            {"index": plan.index_hint, "hit_count": len(hits)},
+            {
+                "datasource_uid": plan.datasource_uid,
+                "hit_count": len(hits),
+                "is_valuable": is_valuable,
+            },
         )
-        return hits
+        return QuickwitQueryResult(hits=hits, is_valuable=is_valuable, reason=reason)
 
     def _build_search_body(
         self, plan: QuickwitQueryPlan, evidence_session_id: str
@@ -67,20 +74,44 @@ class QuickwitConnector:
             elif f.op == "contains" and f.value is not None:
                 terms.append(f"{f.field}:{f.value}")
 
-        start_epoch = int(
-            datetime.fromisoformat(plan.time_window.start).timestamp()
-        )
-        end_epoch = int(
-            datetime.fromisoformat(plan.time_window.end).timestamp()
-        )
+        query = " AND ".join(terms) if terms else "*"
 
-        return {
-            "query": " AND ".join(terms) if terms else "*",
-            "max_hits": plan.max_hits,
-            "start_timestamp": start_epoch,
-            "end_timestamp": end_epoch,
+        sub_query = {
+            "refId": plan.ref_id,
+            "datasource": {"uid": plan.datasource_uid},
+            "query": query,
+            "metric": "",
+            "format": "logs",
+            "maxDataPoints": plan.max_hits,
+            "intervalMs": plan.interval_ms,
             "search_fields": plan.fields_requested,
         }
+
+        return {
+            "from": _to_grafana_time(plan.from_),
+            "to": _to_grafana_time(plan.to),
+            "queries": [sub_query],
+        }
+
+    @staticmethod
+    def _parse_grafana_response(payload: dict, ref_id: str) -> list[dict]:
+        # Grafana QueryDataResponse: {"results": {"<refId>": {"frames": [...]}}}.
+        # Each frame has schema.fields[*].name + data.values (column-major).
+        # Zip columns into row dicts; tolerate missing pieces by returning [].
+        results = payload.get("results", {})
+        ref_block = results.get(ref_id) or next(iter(results.values()), {})
+        frames = ref_block.get("frames", []) if isinstance(ref_block, dict) else []
+        rows: list[dict] = []
+        for frame in frames:
+            fields = (frame.get("schema") or {}).get("fields") or []
+            values = (frame.get("data") or {}).get("values") or []
+            if not fields or not values:
+                continue
+            names = [f.get("name", f"col_{i}") for i, f in enumerate(fields)]
+            row_count = min(len(col) for col in values) if values else 0
+            for i in range(row_count):
+                rows.append({names[c]: values[c][i] for c in range(len(names))})
+        return rows
 
     @staticmethod
     def _fixture_hits(fields_requested: list[str]) -> list[dict]:
@@ -89,3 +120,13 @@ class QuickwitConnector:
             hit = {field: f"fixture_{field}_{i}" for field in fields_requested}
             hits.append(hit)
         return hits
+
+
+def _to_grafana_time(value: str) -> str:
+    # Grafana accepts epoch ms, ISO 8601, or relative strings (now-1h).
+    # Convert ISO to epoch ms; pass through everything else unchanged.
+    try:
+        dt = datetime.fromisoformat(value)
+    except (ValueError, TypeError):
+        return value
+    return str(int(dt.timestamp() * 1000))

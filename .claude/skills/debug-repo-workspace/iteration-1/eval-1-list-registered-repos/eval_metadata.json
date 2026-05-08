@@ -1,0 +1,12 @@
+{
+  "eval_id": 1,
+  "eval_name": "list-registered-repos",
+  "prompt": "Which service repos do we have registered for debug-jira right now? Just show me a quick summary.",
+  "assertions": [
+    {"id": "lists_payments_api", "text": "list output mentions 'payments-api'"},
+    {"id": "lists_billing_core", "text": "list output mentions 'billing-core'"},
+    {"id": "uses_table_or_json", "text": "list output is a table (has NAME/TAGS/ENVS headers) or valid JSON"},
+    {"id": "registry_unchanged", "text": "registry.json content equals the fixture (no mutation during a list operation)"},
+    {"id": "used_helper_script", "text": "notes.md shows the agent ran scripts/registry.py list"}
+  ]
+}

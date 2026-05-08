@@ -1,0 +1,16 @@
+{
+  "eval_id": 0,
+  "eval_name": "register-payments-api",
+  "prompt": "I just cloned our payments-api repo to /tmp/dbg-eval-0/payments-api. It's the service that handles card auth and refunds. In production it logs to Quickwit index id 47 with uid 'pay9ldn3' and its app DB on Metabase is called 'payments_prod'. In UAT the Quickwit index id is 48 with uid 'pay9uat2'. Tag it 'payments' and 'card'. Please register it in the debug-jira repo registry.",
+  "assertions": [
+    {"id": "registry_has_one_repo", "text": "registry.json contains exactly one repo entry"},
+    {"id": "name_is_payments_api", "text": "the repo name is 'payments-api'"},
+    {"id": "path_matches", "text": "path equals '/tmp/dbg-eval-0/payments-api'"},
+    {"id": "tags_payments_and_card", "text": "tags include both 'payments' and 'card'"},
+    {"id": "two_connection_blocks", "text": "connection array has exactly 2 entries (production and uat)"},
+    {"id": "prod_quickwit_correct", "text": "production has a quickwit source with id=47 and uid='pay9ldn3'"},
+    {"id": "prod_metabase_correct", "text": "production has a metabase source with database='payments_prod'"},
+    {"id": "uat_quickwit_correct", "text": "uat has a quickwit source with id=48 and uid='pay9uat2'"},
+    {"id": "used_helper_script", "text": "notes.md shows the agent ran scripts/registry.py (not Write/Edit on registry.json directly)"}
+  ]
+}

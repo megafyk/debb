@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ServiceRepoRegistry",
+  "description": "Top-level registry of service repositories used by the debug-jira skill.",
+  "type": "object",
+  "required": ["version", "repos"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema version. Bump on breaking changes."
+    },
+    "repos": {
+      "type": "array",
+      "items": { "$ref": "registry_entry.schema.json" },
+      "uniqueItemProperties": ["name"]
+    }
+  }
+}

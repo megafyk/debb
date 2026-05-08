@@ -1,0 +1,14 @@
+{
+  "eval_id": 2,
+  "eval_name": "update-add-prometheus-source",
+  "prompt": "For the payments-api repo, add a prometheus source to the production connection. The job label is 'payments-api' and the namespace is 'payments-prod'.",
+  "assertions": [
+    {"id": "still_one_repo", "text": "registry.json still has exactly one repo"},
+    {"id": "prod_has_three_sources", "text": "production connection sources array has 3 entries"},
+    {"id": "prod_prometheus_added", "text": "production has a prometheus source with job='payments-api' and namespace='payments-prod'"},
+    {"id": "prod_quickwit_preserved", "text": "production still has quickwit source with id=47, uid='pay9ldn3' (unchanged)"},
+    {"id": "prod_metabase_preserved", "text": "production still has metabase source with database='payments_prod' (unchanged)"},
+    {"id": "uat_unchanged", "text": "uat connection block is unchanged from fixture (single quickwit source id=48)"},
+    {"id": "used_helper_script", "text": "notes.md shows the agent ran scripts/registry.py update payments-api"}
+  ]
+}

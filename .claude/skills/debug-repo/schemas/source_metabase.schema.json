@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MetabaseSourceMetadata",
+  "description": "Metadata identifying a Metabase database for this service in this environment.",
+  "type": "object",
+  "required": ["database"],
+  "additionalProperties": true,
+  "properties": {
+    "database": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Metabase database name as shown in the Metabase admin UI."
+    },
+    "database_id": {
+      "type": "integer",
+      "description": "Optional Metabase numeric database ID for API calls."
+    },
+    "schema": {
+      "type": "string",
+      "description": "Optional schema name when the database has multiple schemas."
+    }
+  }
+}

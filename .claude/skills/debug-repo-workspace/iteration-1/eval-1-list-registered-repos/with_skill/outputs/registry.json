@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "repos": [
+    {
+      "name": "payments-api",
+      "description": "Card auth and refunds service",
+      "path": "/tmp/dbg-eval-1/payments-api",
+      "tags": ["payments", "card"],
+      "connection": [
+        {"environment": "production", "sources": [
+          {"name": "quickwit", "metadata": {"id": 47, "uid": "pay9ldn3"}},
+          {"name": "metabase", "metadata": {"database": "payments_prod"}}
+        ]}
+      ]
+    },
+    {
+      "name": "billing-core",
+      "description": "Billing ledger and invoicing",
+      "path": "/tmp/dbg-eval-1/billing-core",
+      "tags": ["billing"],
+      "connection": [
+        {"environment": "production", "sources": [
+          {"name": "quickwit", "metadata": {"id": 51, "uid": "blgcore8"}}
+        ]}
+      ]
+    }
+  ]
+}

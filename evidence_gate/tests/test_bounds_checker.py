@@ -3,7 +3,8 @@ from evidence_gate.request_services.bounds_checker import check_metabase_bounds,
 
 def _valid_quickwit_plan():
     return {
-        "time_window": {"start": "2026-01-01T00:00:00+00:00", "end": "2026-01-01T02:00:00+00:00"},
+        "from": "2026-01-01T00:00:00+00:00",
+        "to": "2026-01-01T02:00:00+00:00",
         "max_hits": 100,
         "filters": [{"field": "service", "op": "=", "value": "login-service"}],
     }
@@ -17,7 +18,8 @@ def test_valid_plan_passes():
 
 def test_narrows_wide_time_window():
     plan = _valid_quickwit_plan()
-    plan["time_window"] = {"start": "2026-01-01T00:00:00+00:00", "end": "2026-01-03T00:00:00+00:00"}  # 48h
+    plan["from"] = "2026-01-01T00:00:00+00:00"
+    plan["to"] = "2026-01-03T00:00:00+00:00"  # 48h
     result = check_quickwit_bounds(plan)
     assert result.ok
     assert result.narrowed
@@ -43,7 +45,8 @@ def test_rejects_no_filters():
 
 def test_rejects_invalid_time_format():
     plan = _valid_quickwit_plan()
-    plan["time_window"] = {"start": "not-a-date", "end": "also-not"}
+    plan["from"] = "not-a-date"
+    plan["to"] = "also-not"
     result = check_quickwit_bounds(plan)
     assert not result.ok
     assert "format" in result.rejection_reason
@@ -51,10 +54,11 @@ def test_rejects_invalid_time_format():
 
 def test_rejects_end_before_start():
     plan = _valid_quickwit_plan()
-    plan["time_window"] = {"start": "2026-01-02T00:00:00+00:00", "end": "2026-01-01T00:00:00+00:00"}
+    plan["from"] = "2026-01-02T00:00:00+00:00"
+    plan["to"] = "2026-01-01T00:00:00+00:00"
     result = check_quickwit_bounds(plan)
     assert not result.ok
-    assert "after start" in result.rejection_reason
+    assert "after from" in result.rejection_reason
 
 
 def test_metabase_passes_valid():

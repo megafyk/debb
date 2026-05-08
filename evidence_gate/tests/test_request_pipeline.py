@@ -22,8 +22,9 @@ def _valid_quickwit_plan():
         "type": "quickwit_query_plan",
         "evidence_session_id": "ESESS-1",
         "service": "login-service",
-        "index_hint": "login-service-prod",
-        "time_window": {"start": "2026-01-01T00:00:00+00:00", "end": "2026-01-01T02:00:00+00:00"},
+        "datasource_uid": "login-service-prod",
+        "from": "2026-01-01T00:00:00+00:00",
+        "to": "2026-01-01T02:00:00+00:00",
         "query_intent": "Find login failures",
         "filters": [{"field": "error_code", "op": "=", "value": "ACCOUNT_LOOKUP_FAILED"}],
         "fields_requested": ["timestamp", "error_code", "trace_id"],
@@ -67,7 +68,8 @@ def test_quickwit_overbroad_narrowed():
     with tempfile.TemporaryDirectory() as tmp:
         store = _make_store(Path(tmp))
         plan = _valid_quickwit_plan()
-        plan["time_window"] = {"start": "2026-01-01T00:00:00+00:00", "end": "2026-01-03T00:00:00+00:00"}
+        plan["from"] = "2026-01-01T00:00:00+00:00"
+        plan["to"] = "2026-01-03T00:00:00+00:00"
         plan["max_hits"] = 999
         result = validate_quickwit_request(plan, "ESESS-1", store)
         assert result.accepted
@@ -75,9 +77,9 @@ def test_quickwit_overbroad_narrowed():
         # Narrowing must be persisted on the request plan (not just the audit string)
         persisted = store.get(result.request.evidence_request_id)
         assert persisted.plan["max_hits"] == 500
-        assert persisted.plan["time_window"]["end"] == "2026-01-03T00:00:00+00:00"
+        assert persisted.plan["to"] == "2026-01-03T00:00:00+00:00"
         # 24h window from end
-        assert persisted.plan["time_window"]["start"] == "2026-01-02T00:00:00+00:00"
+        assert persisted.plan["from"] == "2026-01-02T00:00:00+00:00"
 
 
 def _valid_metabase_plan():

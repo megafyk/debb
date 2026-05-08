@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "QuickwitSourceMetadata",
+  "description": "Metadata identifying a Quickwit log index for this service in this environment.",
+  "type": "object",
+  "required": ["id", "uid"],
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "type": "integer",
+      "description": "Numeric Quickwit index ID."
+    },
+    "uid": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable Quickwit index UID (used in URLs and API calls)."
+    },
+    "index_pattern": {
+      "type": "string",
+      "description": "Optional human-friendly index pattern for documentation."
+    }
+  }
+}

@@ -15,12 +15,13 @@ def check_quickwit_plan(plan: dict) -> CheckResult:
         errors.append("missing evidence_session_id")
     if not plan.get("service"):
         errors.append("missing service")
-    if not plan.get("index_hint"):
-        errors.append("missing index_hint")
+    if not plan.get("datasource_uid"):
+        errors.append("missing datasource_uid")
 
-    tw = plan.get("time_window")
-    if not tw or not tw.get("start") or not tw.get("end"):
-        errors.append("missing or incomplete time_window")
+    if not plan.get("from"):
+        errors.append("missing from")
+    if not plan.get("to"):
+        errors.append("missing to")
 
     if not plan.get("query_intent"):
         errors.append("missing query_intent")

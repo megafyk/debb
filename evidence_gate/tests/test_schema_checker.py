@@ -5,8 +5,9 @@ def _valid_quickwit_plan():
     return {
         "evidence_session_id": "ESESS-1",
         "service": "login-service",
-        "index_hint": "login-service-prod",
-        "time_window": {"start": "2026-01-01T00:00:00Z", "end": "2026-01-01T01:00:00Z"},
+        "datasource_uid": "login-service-prod",
+        "from": "2026-01-01T00:00:00Z",
+        "to": "2026-01-01T01:00:00Z",
         "query_intent": "Find login failures",
         "filters": [{"field": "service", "op": "=", "value": "login-service"}],
         "fields_requested": ["timestamp", "error_code"],
@@ -28,12 +29,20 @@ def test_missing_service_fails():
     assert any("service" in e for e in result.errors)
 
 
-def test_missing_time_window_fails():
+def test_missing_from_fails():
     plan = _valid_quickwit_plan()
-    del plan["time_window"]
+    del plan["from"]
     result = check_quickwit_plan(plan)
     assert not result.ok
-    assert any("time_window" in e for e in result.errors)
+    assert any("from" in e for e in result.errors)
+
+
+def test_missing_to_fails():
+    plan = _valid_quickwit_plan()
+    del plan["to"]
+    result = check_quickwit_plan(plan)
+    assert not result.ok
+    assert any("to" in e for e in result.errors)
 
 
 def test_invalid_max_hits_fails():

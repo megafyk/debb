@@ -10,3 +10,4 @@ node_modules/
 evidence_gate/.data/
 *.lock
 uv.lock
+.debug/

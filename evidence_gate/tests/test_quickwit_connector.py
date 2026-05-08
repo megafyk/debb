@@ -7,7 +7,7 @@ from pathlib import Path
 from evidence_gate.config import Settings
 from evidence_gate.audit_logger import AuditLogger
 from evidence_gate.connectors.quickwit_connector import QuickwitConnector
-from evidence_gate.contracts import QuickwitQueryPlan, QueryFilter, TimeWindow
+from evidence_gate.contracts import QuickwitQueryPlan, QueryFilter
 from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 from evidence_gate.storage.jsonl_event_store import JsonlEventStore
 
@@ -17,8 +17,9 @@ def _make_plan(**overrides: object) -> QuickwitQueryPlan:
         type="quickwit_query_plan",
         evidence_session_id="ESESS-1",
         service="login-service",
-        index_hint="login-service-prod",
-        time_window=TimeWindow(start="2026-01-01T00:00:00+00:00", end="2026-01-01T02:00:00+00:00"),
+        datasource_uid="login-service-prod",
+        from_="2026-01-01T00:00:00+00:00",
+        to="2026-01-01T02:00:00+00:00",
         query_intent="Find login failures",
         filters=[QueryFilter(field="error_code", op="=", value="ACCOUNT_LOOKUP_FAILED")],
         fields_requested=["timestamp", "error_code", "trace_id"],
@@ -40,9 +41,11 @@ def test_fixture_mode_returns_hits():
     with tempfile.TemporaryDirectory() as tmp:
         connector, _, _, _ = _setup(Path(tmp))
         plan = _make_plan()
-        hits = asyncio.run(connector.execute(plan, "ESESS-1"))
-        assert len(hits) == 3
-        for hit in hits:
+        result = asyncio.run(connector.execute(plan, "ESESS-1"))
+        assert result.is_valuable is True
+        assert result.reason == ""
+        assert len(result.hits) == 3
+        for hit in result.hits:
             for field in plan.fields_requested:
                 assert field in hit
 
@@ -74,7 +77,13 @@ def test_build_search_body_filters():
             ]
         )
         body = connector._build_search_body(plan, "ESESS-1")
-        query = body["query"]
+        assert "from" in body and "to" in body
+        assert len(body["queries"]) == 1
+        sub = body["queries"][0]
+        assert sub["refId"] == "A"
+        assert sub["datasource"] == {"uid": "login-service-prod"}
+        assert sub["format"] == "logs"
+        query = sub["query"]
         assert "error_code:ACCOUNT_LOOKUP_FAILED" in query
         assert "level:IN [ERROR WARN]" in query
         assert "message:timeout" in query
@@ -90,7 +99,7 @@ def test_build_search_body_sensitive_ref():
             filters=[QueryFilter(field="user_email", op="matches_sensitive_ref", value_ref=ref)]
         )
         body = connector._build_search_body(plan, "ESESS-1")
-        assert "admin@corp.com" in body["query"]
+        assert "admin@corp.com" in body["queries"][0]["query"]
 
 
 def test_audit_logged_after_execute():

@@ -22,23 +22,19 @@ def check_quickwit_bounds(plan: dict) -> BoundsResult:
     narrowing: list[str] = []
     adjusted = dict(plan)
 
-    tw = adjusted.get("time_window", {})
     try:
-        start = datetime.fromisoformat(tw.get("start", ""))
-        end = datetime.fromisoformat(tw.get("end", ""))
+        start = datetime.fromisoformat(adjusted.get("from", ""))
+        end = datetime.fromisoformat(adjusted.get("to", ""))
     except (ValueError, TypeError):
-        return BoundsResult(ok=False, rejection_reason="invalid time_window format")
+        return BoundsResult(ok=False, rejection_reason="invalid from/to format")
 
     if end <= start:
-        return BoundsResult(ok=False, rejection_reason="time_window end must be after start")
+        return BoundsResult(ok=False, rejection_reason="to must be after from")
 
     hours = (end - start).total_seconds() / 3600
     if hours > MAX_TIME_WINDOW_HOURS:
         new_start = end - timedelta(hours=MAX_TIME_WINDOW_HOURS)
-        adjusted["time_window"] = {
-            "start": new_start.isoformat(),
-            "end": tw["end"],
-        }
+        adjusted["from"] = new_start.isoformat()
         narrowing.append(f"time_window narrowed from {hours:.0f}h to {MAX_TIME_WINDOW_HOURS}h")
 
     max_hits = adjusted.get("max_hits", 100)

@@ -1,0 +1,11 @@
+{
+  "eval_id": 3,
+  "eval_name": "delete-with-confirmation",
+  "prompt": "We deprecated the payments-api service last sprint and migrated everything to billing-core. Please remove payments-api from our debug registry.",
+  "assertions": [
+    {"id": "registry_empty", "text": "registry.json has zero repo entries (repos array is empty)"},
+    {"id": "showed_entry_first", "text": "notes.md indicates the agent ran 'show payments-api' (or equivalent) BEFORE the delete"},
+    {"id": "asked_for_confirmation", "text": "notes.md records an explicit user-confirmation step before --confirm was used"},
+    {"id": "used_helper_script", "text": "notes.md shows the agent ran scripts/registry.py delete payments-api --confirm"}
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PrometheusSourceMetadata",
+  "description": "Metadata identifying the Prometheus metrics for this service in this environment.",
+  "type": "object",
+  "required": ["job"],
+  "additionalProperties": true,
+  "properties": {
+    "job": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Prometheus job label that scrapes this service."
+    },
+    "namespace": {
+      "type": "string",
+      "description": "Optional Kubernetes namespace or logical grouping."
+    },
+    "metric_prefix": {
+      "type": "string",
+      "description": "Optional metric name prefix used for service-specific metrics."
+    }
+  }
+}

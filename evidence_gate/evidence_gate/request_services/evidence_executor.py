@@ -35,7 +35,8 @@ async def execute_quickwit_request(
         request_store.transition(request_id, "connector_running")
 
         plan = QuickwitQueryPlan.model_validate(request.plan)
-        raw_hits = await quickwit_connector.execute(plan, evidence_session_id)
+        result = await quickwit_connector.execute(plan, evidence_session_id)
+        raw_hits = result.hits
 
         raw_store.store(request_id, raw_hits)
         request_store.transition(request_id, "raw_evidence_stored")

@@ -6,7 +6,7 @@ masked evidence packages, debug reports, and audit events.
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ---- Sanitized ticket -------------------------------------------------------
@@ -74,18 +74,35 @@ class TimeWindow(BaseModel):
 
 
 class QuickwitQueryPlan(BaseModel):
+    # Mirrors Grafana MetricRequest at the wire boundary: from/to drive the
+    # /ds/query body, datasource_uid identifies the Grafana data source that
+    # proxies to Quickwit, and ref_id/max_data_points/interval_ms populate the
+    # per-query slot. filters/fields_requested/max_hits stay plan-shaped; the
+    # connector translates them into the Lucene query string.
+    model_config = ConfigDict(populate_by_name=True)
+
     type: str = "quickwit_query_plan"
     evidence_session_id: str
     service: str
     repository: str = ""
     code_paths: list[str] = []
-    index_hint: str
-    time_window: TimeWindow
+    datasource_uid: str
+    from_: str = Field(alias="from")
+    to: str
+    ref_id: str = "A"
+    max_data_points: int = 100
+    interval_ms: int = 1000
     query_intent: str
     filters: list[QueryFilter]
     fields_requested: list[str]
     max_hits: int = Field(default=100, ge=1, le=1000)
     output_profile: str = ""
+
+
+class QuickwitQueryResult(BaseModel):
+    hits: list[dict]
+    is_valuable: bool
+    reason: str = ""
 
 
 class MetabaseQueryPlan(BaseModel):

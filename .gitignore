@@ -25,6 +25,11 @@ evidence_gate/.data/
 # code-review-graph
 .code-review-graph/
 
+# debug-repo registry (per-developer; paths differ across machines)
+.claude/skills/debug-repo/registry.json
+
 # OS
 .DS_Store
 Thumbs.db
+
+.debug/

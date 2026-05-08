@@ -1,0 +1,43 @@
+{
+  "eval_id": 2,
+  "eval_name": "update-add-prometheus-source",
+  "expectations": [
+    {
+      "text": "registry.json still has exactly one repo",
+      "passed": true,
+      "evidence": "len=1"
+    },
+    {
+      "text": "production connection sources array has 3 entries",
+      "passed": true,
+      "evidence": "len=3"
+    },
+    {
+      "text": "production has a prometheus source with job='payments-api' and namespace='payments-prod'",
+      "passed": true,
+      "evidence": "{\"name\": \"prometheus\", \"metadata\": {\"job\": \"payments-api\", \"namespace\": \"payments-prod\"}}"
+    },
+    {
+      "text": "production still has quickwit source with id=47, uid='pay9ldn3' (unchanged)",
+      "passed": true,
+      "evidence": "{\"name\": \"quickwit\", \"metadata\": {\"id\": 47, \"uid\": \"pay9ldn3\"}}"
+    },
+    {
+      "text": "production still has metabase source with database='payments_prod' (unchanged)",
+      "passed": true,
+      "evidence": "{\"name\": \"metabase\", \"metadata\": {\"database\": \"payments_prod\"}}"
+    },
+    {
+      "text": "uat connection block is unchanged from fixture (single quickwit source id=48)",
+      "passed": true,
+      "evidence": "{\"environment\": \"uat\", \"sources\": [{\"name\": \"quickwit\", \"metadata\": {\"id\": 48, \"uid\": \"pay9uat2\"}}]}"
+    },
+    {
+      "text": "notes.md shows the agent ran scripts/registry.py update payments-api",
+      "passed": true,
+      "evidence": "found"
+    }
+  ],
+  "passed": 7,
+  "total": 7
+}
