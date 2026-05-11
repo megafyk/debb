@@ -1,73 +1,59 @@
-# Debug Report
+# Debug Report — {{ticket_id}}
 
-**Ticket**: {{ticket_id}}
-**Evidence Session**: {{evidence_session_id}}
-**Generated**: {{timestamp}}
+**Session**: {{evidence_session_id}} · **Generated**: {{timestamp}} · **Service**: {{primary_service}}
 
-## Ticket Summary
+## Summary
 
 {{summary}}
+<!-- ≤3 sentences: symptom, scope, when. No restatement of the ticket comments. -->
 
-## Sanitized Incident Timeline
-
-{{timeline}}
-
-## Services Inspected
-
-{{services_inspected}}
-
-## Code Paths Inspected
-
-{{code_paths_inspected}}
-
-## Query Plans Submitted
-
-| Plan ID | Type | Service | Status |
-|---------|------|---------|--------|
-{{query_plans}}
-
-## Evidence Collected
-
-| Evidence ID | Source | Output Profile |
-|-------------|--------|----------------|
-{{evidence_collected}}
-
-## Diagnostic Features Used
-
-{{diagnostic_features}}
-
-## Hypotheses Considered
-
-{{hypotheses_considered}}
-
-## Hypotheses Rejected
-
-| Hypothesis | Rejection Reason |
-|------------|-----------------|
-{{hypotheses_rejected}}
-
-## Most Likely Root Cause
+## Root Cause (most likely)
 
 {{most_likely_root_cause}}
+<!--
+≤6 sentences. State: trigger → faulty branch → user-visible result.
+Cite code as `path:Lnn` (with the commit if not current master).
+Cite evidence as `<EVID>:Lnn` (line N = hit N in masked_data.hits).
+Do not repeat the summary. Do not restate what each hypothesis was.
+-->
 
-## Confidence
+**Confidence**: {{confidence}} — {{confidence_rationale}}
+<!-- One sentence. Name the converging streams, then name the residual gap. -->
 
-**Level**: {{confidence}}
-**Rationale**: {{confidence_rationale}}
+## Evidence
 
-## Suggested Fix Direction
+| Evidence | Plan | Source | Finding |
+|----------|------|--------|---------|
+{{evidence_table}}
+<!-- One row per evidence ID. "Finding" is one line: what the evidence proved or ruled out. -->
 
-{{suggested_fix}}
+## Hypotheses
 
-### Risks
+| # | Hypothesis | Verdict | Reason |
+|---|------------|---------|--------|
+{{hypothesis_table}}
+<!--
+Verdict: `supported` | `rejected`.
+Reason is one line with a citation. Do not split into Considered+Rejected sections.
+-->
 
-{{fix_risks}}
-
-## Required Engineer Verification Steps
+## Verification Steps
 
 {{verification_steps}}
+<!-- Numbered list. Each step independently checkable by the engineer. -->
+
+## Fix Direction
+
+{{suggested_fix}}
+<!--
+OMIT this section entirely if no fix is being proposed (e.g. fix already shipped).
+If included: ≤3 bullets. Risks as sub-bullets under the relevant bullet, not a separate section.
+-->
 
 ## References
 
-- Evidence IDs: {{evidence_ids}}
-- Audit refs: {{audit_refs}}
+- **Code**: {{code_refs}}
+- **Audits**: {{audit_refs}}
+- **Service map**: {{service_map_path}}
+{{optional_refs}}
+<!-- Use `optional_refs` for companion sessions or follow-up plan IDs. Do not duplicate evidence IDs or plan IDs already in the Evidence table. -->

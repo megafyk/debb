@@ -42,7 +42,6 @@ def build_masked_db_package(
     redacted_rows: list[dict],
     diagnostic_features: list[DiagnosticFeature],
     audit_ref: str,
-    evidence_file: dict | None = None,
 ) -> MaskedEvidencePackage:
     return MaskedEvidencePackage(
         evidence_session_id=evidence_session_id,
@@ -55,5 +54,4 @@ def build_masked_db_package(
         },
         diagnostic_features=diagnostic_features,
         audit_ref=audit_ref,
-        evidence_file=evidence_file or {},
     )

@@ -157,7 +157,12 @@ class JiraConnector:
                 sensitive_refs.extend(_to_sensitive_refs(comment_refs))
             ticket.comments_sanitized = new_comments
 
-        # Final pass: catch anything the extractor missed
+        # Final pass: catch anything the extractor missed in free-text fields.
+        # `summary` and `labels` come from allowlisted but still untrusted Jira
+        # input — Jira summaries occasionally contain emails/phones pasted from
+        # reporters, and labels are agent-visible after this returns.
+        ticket.summary = redact_text(ticket.summary)
+        ticket.labels = [redact_text(label) for label in ticket.labels]
         ticket.description_sanitized = redact_text(ticket.description_sanitized)
         ticket.comments_sanitized = [redact_text(c) for c in ticket.comments_sanitized]
 

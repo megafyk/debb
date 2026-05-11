@@ -24,17 +24,6 @@ def test_session_store_get_missing():
         assert store.get("nonexistent") is None
 
 
-def test_session_store_find_by_ticket():
-    with tempfile.TemporaryDirectory() as tmp:
-        store = EvidenceSessionStore(Path(tmp))
-        session = EvidenceSession(ticket_id="BUG-42")
-        store.save(session)
-
-        found = store.find_by_ticket("BUG-42")
-        assert found is not None
-        assert found.evidence_session_id == session.evidence_session_id
-
-
 def test_sensitive_value_store():
     with tempfile.TemporaryDirectory() as tmp:
         store = SensitiveValueStore(Path(tmp))

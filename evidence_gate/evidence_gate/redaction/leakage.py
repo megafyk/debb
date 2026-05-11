@@ -3,7 +3,12 @@ import re
 
 PII_PATTERNS = [
     (re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b"), "raw email detected"),
-    (re.compile(r"\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}\b"), "raw phone number detected"),
+    # Phone: require either a `+` country-code prefix or at least one
+    # separator inside. A bare 8-digit run with no separator is not a
+    # phone signal and matches auto-generated id tails like
+    # `AUD-12345678`, which makes the safety check randomly flag IDs.
+    (re.compile(r"\+\d{6,15}\b"), "raw phone number detected"),
+    (re.compile(r"\b\d{2,4}[-.\s]\d{3,4}[-.\s]?\d{3,4}\b"), "raw phone number detected"),
     (re.compile(r"\b\d{3}-\d{2}-\d{4}\b"), "raw SSN detected"),
 ]
 

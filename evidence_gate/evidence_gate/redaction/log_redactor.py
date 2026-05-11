@@ -59,7 +59,6 @@ def build_masked_log_package(
     hit_count: int,
     audit_ref: str,
     correlation_ids: dict[str, list[str]] | None = None,
-    evidence_file: dict | None = None,
 ) -> MaskedEvidencePackage:
     fields_found = sorted(
         {key for hit in redacted_hits for key in hit}
@@ -78,5 +77,4 @@ def build_masked_log_package(
         output_profile=output_profile,
         masked_data=masked_data,
         audit_ref=audit_ref,
-        evidence_file=evidence_file or {},
     )

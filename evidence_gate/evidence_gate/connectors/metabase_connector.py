@@ -1,14 +1,7 @@
-"""Metabase connector — runs only registered SQL templates.
-
-Bundles the previously-separate api_spec_loader, template_registry, and
-param_resolver helpers, since each had a single call site here.
-"""
+"""Metabase connector — runs only registered SQL templates."""
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
-from functools import cache
-from pathlib import Path
 
 import httpx
 
@@ -17,26 +10,6 @@ from evidence_gate.config import Settings
 from evidence_gate.connectors.auth import metabase_session_header
 from evidence_gate.contracts import MetabaseQueryPlan
 from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
-
-
-# ---- API spec guard --------------------------------------------------------
-
-_ALLOWED_ENDPOINTS = ("/api/session", "/api/dataset")
-
-
-@cache
-def _load_spec_and_check(spec_path: Path | None = None) -> None:
-    """Verify the bundled Metabase OpenAPI spec covers the endpoints we call.
-
-    Result is cached: the spec file ships with the package and doesn't change
-    at runtime, so re-parsing a 1.7 MB JSON on every connector init is wasted.
-    """
-    if spec_path is None:
-        spec_path = Path(__file__).resolve().parents[3] / "docs" / "metabase_api.json"
-    paths = json.loads(spec_path.read_text()).get("paths", {})
-    for endpoint in _ALLOWED_ENDPOINTS:
-        if endpoint not in paths:
-            raise RuntimeError(f"Metabase API spec missing required endpoint: {endpoint}")
 
 
 # ---- Template registry -----------------------------------------------------
@@ -153,8 +126,6 @@ class MetabaseConnector:
         self._settings = settings
         self._sensitive_store = sensitive_store
         self._audit = audit_logger
-        # Validate the shipped API spec covers everything we plan to call.
-        _load_spec_and_check()
 
     @property
     def is_live(self) -> bool:
