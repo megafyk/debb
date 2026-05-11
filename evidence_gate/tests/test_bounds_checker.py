@@ -43,13 +43,26 @@ def test_rejects_no_filters():
     assert "filter" in result.rejection_reason
 
 
-def test_rejects_invalid_time_format():
+def test_relative_time_passes_through():
+    # Non-ISO from/to (Grafana relative or epoch ms) bypass narrowing — the
+    # connector translates them at the wire boundary.
     plan = _valid_quickwit_plan()
-    plan["from"] = "not-a-date"
-    plan["to"] = "also-not"
+    plan["from"] = "now-1h"
+    plan["to"] = "now"
+    result = check_quickwit_bounds(plan)
+    assert result.ok
+    assert not result.narrowed
+
+
+def test_rejects_mixed_time_formats():
+    # Mixed ISO + relative would silently bypass the 24h narrowing — an ISO
+    # `from` of 2020-01-01 with `to=now` opens a 5+ year window otherwise.
+    plan = _valid_quickwit_plan()
+    plan["from"] = "2020-01-01T00:00:00"
+    plan["to"] = "now"
     result = check_quickwit_bounds(plan)
     assert not result.ok
-    assert "format" in result.rejection_reason
+    assert "same format" in result.rejection_reason
 
 
 def test_rejects_end_before_start():

@@ -10,7 +10,11 @@ from evidence_gate.redaction.db_redactor import (
     extract_diagnostic_features,
     redact_db_rows,
 )
-from evidence_gate.redaction.log_redactor import build_masked_log_package, redact_log_hits
+from evidence_gate.redaction.log_redactor import (
+    build_masked_log_package,
+    extract_correlation_ids,
+    redact_log_hits,
+)
 from evidence_gate.storage.evidence_request_store import EvidenceRequestStore
 from evidence_gate.storage.masked_package_store import MaskedPackageStore
 from evidence_gate.storage.raw_evidence_store import RawEvidenceStore
@@ -43,6 +47,7 @@ async def execute_quickwit_request(
 
         request_store.transition(request_id, "redaction_running")
         redacted = redact_log_hits(raw_hits, plan.fields_requested)
+        correlation_ids = extract_correlation_ids(raw_hits)
 
         audit_event = audit_logger.log(
             evidence_session_id,
@@ -57,6 +62,7 @@ async def execute_quickwit_request(
             redacted_hits=redacted,
             hit_count=len(raw_hits),
             audit_ref=audit_event.audit_id,
+            correlation_ids=correlation_ids,
         )
         masked_store.save(package)
 
@@ -72,7 +78,10 @@ async def execute_quickwit_request(
             request_store.transition(request_id, "failed")
         except ValueError:
             pass
-        raise
+        # Strip the original exception (`from None`) so URLs, auth headers,
+        # and other connector-internal details don't leak through MCP error
+        # serialization. The audit log retains the state transition.
+        raise RuntimeError(f"connector failed for request {request_id}") from None
 
 
 async def execute_metabase_request(
@@ -130,4 +139,4 @@ async def execute_metabase_request(
             request_store.transition(request_id, "failed")
         except ValueError:
             pass
-        raise
+        raise RuntimeError(f"connector failed for request {request_id}") from None

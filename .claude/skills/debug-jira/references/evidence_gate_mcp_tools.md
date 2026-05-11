@@ -30,12 +30,12 @@ Check the status of an evidence request.
 ### get_masked_evidence_package
 Retrieve the masked evidence package for a completed request.
 - **Input**: `evidence_id` (string)
-- **Output**: MaskedEvidencePackage
+- **Output**: MaskedEvidencePackage. For Quickwit packages, `masked_data.correlation_ids` is a `{field: [unique_values]}` map covering `contextMap.traceId`, `contextMap.correlationID`, `contextMap.requestID`, `requestID`, `sessionID` — pick the first non-empty key to drive the next-stage correlation query.
 
 ### list_evidence_templates
-List available evidence query templates.
-- **Input**: `source_type` (string, optional)
-- **Output**: List of template names and descriptions
+List the registered Metabase query templates that `MetabaseQueryPlan` can target.
+- **Input**: none
+- **Output**: `{templates: [{template_id, entity, description, param_names, facts_produced}]}`
 
 ### submit_debug_report
 Submit a completed debug report.

@@ -67,49 +67,23 @@ The script writes to `.claude/skills/debug-repo/registry.json` (atomic temp-file
 
 ### Code-review-graph sync (register and delete only)
 
-`register` and `delete` automatically mirror the change into the
-`code-review-graph` multi-repo registry at `~/.code-review-graph/registry.json`:
+`register` and `delete` mirror the change into `~/.code-review-graph/registry.json`:
 
-- **register** runs `code-review-graph register <path> --alias <name>`, then `code-review-graph build --repo <path>` to parse the new repo into the graph.
+- **register** runs `code-review-graph register <path> --alias <name>` then `code-review-graph build --repo <path>`.
 - **delete** runs `code-review-graph unregister <name>`.
 
-The CRG outcome is reported in the JSON response under `graph_sync` (the
-register/unregister step) and `graph_build` (the parse step, register-only):
+The script reports both outcomes under `graph_sync` (register/unregister) and `graph_build` (register only) in its JSON response. Surface them to the user verbatim.
 
-```json
-"graph_sync":  { "ran": true, "ok": true, "command": "...", "stdout": "Registered: ...", "stderr": "" },
-"graph_build": { "ran": true, "ok": true, "command": "...", "stdout": "Full build: 12 files, 348 nodes, 921 edges (postprocess=full)", "stderr": "..." }
-```
+**Warn before `register`.** The build can take seconds to minutes on a real service repo. Tell the user it will block until the build finishes.
 
-**Build can take a minute or more.** A real service repo with hundreds of
-files takes seconds-to-minutes to parse. Before kicking off `register`,
-warn the user that the command will block until the graph build finishes
-("this will register the repo and then build its graph; that may take a
-minute"). Then run it and report both `graph_sync` and `graph_build`
-outcomes back to the user.
+**Best-effort, no rollback.** If `graph_sync` or `graph_build` fails, the local registry mutation still succeeds. Common `graph_sync` failures: path is not a git repo (suggest `git init` or fix the path); CRG CLI missing (`pip install code-review-graph` or use `--no-graph-sync`); already-registered/not-found drift (usually safe to mention and ignore). `graph_build` failures leave both registries intact — the user can retry `code-review-graph build --repo <path>` later.
 
-**Best-effort, no rollback.** If `graph_sync` fails (CRG CLI missing,
-non-git path, alias collision, network hiccup), the local registry
-mutation still succeeds and `graph_build` is skipped automatically — no
-point parsing a repo CRG doesn't know about. Surface the `graph_sync.stderr`
-to the user. Common causes:
+**Opt-out flags:**
 
-- `Path does not look like a repository (no .git or .code-review-graph)` — the user gave a path that isn't a git repo. Ask them to either `git init` it or pick the correct path, then re-run.
-- `code-review-graph CLI not found on PATH` — CRG isn't installed. The local register still succeeded; tell the user how to install it (`pip install code-review-graph`) or to pass `--no-graph-sync`.
-- `Repository already registered` (on register) or `not found` (on unregister) — the two registries had drifted. Usually safe to ignore; mention it to the user.
+- `--no-graph-sync` — skip CRG sync and build entirely (local-only or non-git path).
+- `--no-graph-build` — register in CRG but skip the build (defer to a quieter moment). `register` only.
 
-If `graph_build` fails (parse error on a specific file, postprocess
-failure, timeout), the local register *and* the CRG register both still
-succeeded — only the graph parse was incomplete. Surface the build error;
-the user can re-run `code-review-graph build --repo <path>` manually to
-retry, or pass `--no-graph-build` next time and build later.
-
-**Opting out.** Two flags control the CRG side:
-
-- `--no-graph-sync` — skip both the CRG register/unregister AND the build. Use when the user wants the change to stay local, or is registering a non-git directory on purpose.
-- `--no-graph-build` — register in CRG, but skip the slower graph build. Use when the user is registering a large repo and wants to defer the build to a quieter moment, or has their own build automation. Only meaningful on `register`.
-
-`update` does **not** touch CRG — CRG only stores `{path, alias}` per repo, and our `update` doesn't allow renaming, so there's nothing to sync or rebuild.
+`update` does not touch CRG — CRG only stores `{path, alias}`, and `update` doesn't rename.
 
 ### Step 4 — Confirm and report
 

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from functools import cache
 from pathlib import Path
 
 import httpx
@@ -23,16 +24,19 @@ from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 _ALLOWED_ENDPOINTS = ("/api/session", "/api/dataset")
 
 
-def _load_spec_and_check(spec_path: Path | None = None) -> dict:
-    """Load the Metabase OpenAPI spec and verify required endpoints exist."""
+@cache
+def _load_spec_and_check(spec_path: Path | None = None) -> None:
+    """Verify the bundled Metabase OpenAPI spec covers the endpoints we call.
+
+    Result is cached: the spec file ships with the package and doesn't change
+    at runtime, so re-parsing a 1.7 MB JSON on every connector init is wasted.
+    """
     if spec_path is None:
         spec_path = Path(__file__).resolve().parents[3] / "docs" / "metabase_api.json"
-    spec = json.loads(spec_path.read_text())
-    paths = spec.get("paths", {})
+    paths = json.loads(spec_path.read_text()).get("paths", {})
     for endpoint in _ALLOWED_ENDPOINTS:
         if endpoint not in paths:
             raise RuntimeError(f"Metabase API spec missing required endpoint: {endpoint}")
-    return spec
 
 
 # ---- Template registry -----------------------------------------------------

@@ -28,6 +28,12 @@ evidence_gate/.data/
 # debug-repo registry (per-developer; paths differ across machines)
 .claude/skills/debug-repo/registry.json
 
+# Claude Code agent worktrees
+.claude/worktrees/
+
+# Vendored repos used as code-review-graph eval inputs
+evaluate/test_repos/
+
 # OS
 .DS_Store
 Thumbs.db

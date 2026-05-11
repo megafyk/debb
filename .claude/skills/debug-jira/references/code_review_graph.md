@@ -1,7 +1,7 @@
 # code-review-graph Usage
 
 ## When available
-Check with `graph-status`. If the graph is built, prefer graph tools over Grep/Glob.
+Check with `code-review-graph status --repo <path>` (CLI) or `list_graph_stats_tool` (MCP). If the graph is built and fresh, prefer graph tools over Grep/Glob.
 
 ## Refreshing the index (mandatory before scan)
 

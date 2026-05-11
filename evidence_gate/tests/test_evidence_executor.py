@@ -164,3 +164,38 @@ def test_execute_transitions_to_failed_on_error():
 
         final = request_store.get(req.evidence_request_id)
         assert final.state == "failed"
+
+
+def test_executor_sanitizes_connector_exception_message():
+    """Connector exceptions (e.g. httpx URL leakage) must not propagate to the agent."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        request_store, connector, raw_store, masked_store, audit_logger = _setup(tmp_path)
+        req = _make_bounded_request(request_store)
+
+        async def _leaky_execute(plan, sid):
+            raise RuntimeError(
+                "500 Server Error for url 'https://internal-quickwit.corp:7280/api/ds/query' "
+                "with header 'Authorization: Basic c2VjcmV0OnB3'"
+            )
+
+        connector.execute = _leaky_execute  # type: ignore[assignment]
+
+        try:
+            asyncio.run(
+                execute_quickwit_request(
+                    req.evidence_request_id, request_store, connector,
+                    raw_store, masked_store, audit_logger, "ESESS-1",
+                )
+            )
+            assert False, "Should have raised"
+        except RuntimeError as exc:
+            msg = str(exc)
+            assert "internal-quickwit.corp" not in msg
+            assert "Basic c2VjcmV0OnB3" not in msg
+            assert req.evidence_request_id in msg
+
+        # The chained __cause__ must also be suppressed (raise ... from None)
+        # so the original message isn't accessible via standard traceback display.
+        final = request_store.get(req.evidence_request_id)
+        assert final.state == "failed"

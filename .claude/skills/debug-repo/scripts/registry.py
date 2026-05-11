@@ -46,8 +46,6 @@ SKILL_DIR = Path(__file__).resolve().parent.parent
 SCHEMA_DIR = SKILL_DIR / "schemas"
 REGISTRY_PATH = SKILL_DIR / "registry.json"
 
-VALID_SOURCE_NAMES = ("quickwit", "metabase", "prometheus")
-
 
 # ---------------------------------------------------------------------------
 # Schema loading

@@ -17,7 +17,7 @@ Tracks changes and implementation progress for the AI-assisted production debugg
 | M7 | Metabase templates | ✅ Done |
 | M8 | Reports and evals | ✅ Done |
 
-**175 tests passing** (26 boundary tests) • **8 MCP tools** • **65 Python files** (34 source + 31 tests)
+**198 tests passing** (28 boundary tests) • **8 MCP tools** • **65 Python files** (34 source + 31 tests)
 
 ---
 

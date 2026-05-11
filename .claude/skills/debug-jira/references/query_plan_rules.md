@@ -24,3 +24,11 @@
 
 ## Replan policy (Quickwit)
 - A `QuickwitQueryResult` with `is_valuable=false` (`reason="zero_hits"`) means the plan returned nothing. Revise one knob — time window, filter set, fields_requested, or datasource_uid — and resubmit a new plan via `create_quickwit_evidence_request`. Cap attempts at 3.
+
+## Three-stage strategy — Quickwit only (see `prompts/quickwit_query_planning.md`)
+
+Does NOT apply to Metabase. Metabase plans target registered SQL templates by `entity` + `facts_requested` and have no request journey to correlate.
+
+- **Stage 1** narrows by error string + level + env + masked user input to find the failing request and surface correlation IDs in `masked_data.correlation_ids`.
+- **Stage 2** pulls the full journey by `contextMap.traceId` (no level filter, no instance filter — cross-service).
+- **Stage 3** falls back through `correlationID → requestID → sessionID` if stage 2 is empty. Cap the chain at 3 attempts.

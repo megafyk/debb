@@ -7,13 +7,14 @@ from evidence_gate.contracts import EvidenceRequest
 from evidence_gate.storage.json_store import JsonStore
 
 
-# Valid state transitions
+# Valid state transitions. Every non-terminal state can also transition to
+# `failed` so an exception between transitions doesn't leave requests stuck.
 _TRANSITIONS: dict[str, set[str]] = {
-    "created": {"schema_checked", "rejected"},
-    "schema_checked": {"rejected", "bounded"},
-    "bounded": {"connector_running"},
+    "created": {"schema_checked", "rejected", "failed"},
+    "schema_checked": {"rejected", "bounded", "failed"},
+    "bounded": {"connector_running", "failed"},
     "connector_running": {"raw_evidence_stored", "failed"},
-    "raw_evidence_stored": {"redaction_running"},
+    "raw_evidence_stored": {"redaction_running", "failed"},
     "redaction_running": {"masked_package_ready", "failed"},
 }
 

@@ -1,6 +1,6 @@
 # AI-Assisted Production Debugging System — Skill-First Implementation Plan
 
-> **Status (2026-05-05):** Milestones 1–8 complete. 192 tests passing (26 boundary). 7 MCP tools live. This document now describes the as-built system; deviations from the original plan are noted inline.
+> **Status (2026-05-08):** Milestones 1–8 complete. 198 tests passing (28 boundary). 8 MCP tools live. This document now describes the as-built system; deviations from the original plan are noted inline.
 
 ## 0. Purpose
 
@@ -706,32 +706,23 @@ masked evidence package
 
 ## 9. evidence_gate Module Layout
 
-As-built layout (kept intentionally small):
+As-built layout (consolidated 2026-05-05 — see `docs/log.md`). The original
+plan proposed `app/`, `audit/`, `contracts/`, `sessions/` as directories and
+split Metabase helpers across three files; each held only 1–2 small modules
+or had a single call site, so they were hoisted/merged.
 
 ```text
 evidence_gate/
   pyproject.toml
   evidence_gate/
-    app/
-      main.py
-      config.py
+    main.py                 # MCP server entry point
+    config.py               # EVIDENCE_GATE_* settings
+    contracts.py            # all Pydantic domain models
+    audit_logger.py         # append-only audit log
 
     mcp_server/
       server.py
-      tools.py
-
-    contracts/
-      sanitized_ticket.py
-      evidence_session.py
-      query_plan.py
-      evidence_request.py
-      masked_evidence_package.py
-      debug_report.py
-      audit.py
-
-    sessions/
-      evidence_session_store.py
-      sensitive_value_store.py
+      tools.py              # 8 MCP tools registered here
 
     request_services/
       schema_checker.py
@@ -743,29 +734,25 @@ evidence_gate/
 
     connectors/
       auth.py
-      jira_connector.py
-      jira_field_mapper.py
+      jira_connector.py     # field mapper merged in
       quickwit_connector.py
-      metabase_connector.py
-      metabase_api_spec_loader.py
-      metabase_template_registry.py
-      metabase_param_resolver.py
+      metabase_connector.py # api_spec_loader, template_registry, param_resolver merged in
 
     redaction/
       pii_extractor.py
       jira_redactor.py
       log_redactor.py
       db_redactor.py
+      leakage.py            # shared PII/credential patterns
 
     storage/
       json_store.py
       jsonl_event_store.py
+      evidence_session_store.py
+      sensitive_value_store.py
       evidence_request_store.py
       raw_evidence_store.py
       masked_package_store.py
-
-    audit/
-      audit_logger.py
 
   tests/
     boundary/
@@ -775,19 +762,22 @@ Avoid extra layers until needed. Tests live alongside `evidence_gate/` (not nest
 
 ## 10. MCP Tools
 
-Expose only safe, high-level tools:
+Expose only safe, high-level tools (8 as-built):
 
 ```text
 start_debugging_session
 get_sanitized_jira_ticket
 create_quickwit_evidence_request
 create_metabase_evidence_request
-create_evidence_request
 get_evidence_request_status
 get_masked_evidence_package
 list_evidence_templates
 submit_debug_report
 ```
+
+The original plan also listed an untyped `create_evidence_request`; the
+typed Quickwit/Metabase variants cover the same surface and the untyped
+one was never built.
 
 Do not expose:
 
@@ -1008,6 +998,12 @@ The Skill may create query plans. Query plans are not executable production quer
 
 ### 15.1 QuickwitQueryPlan
 
+Reshaped 2026-05-08 to mirror Grafana's `MetricRequest` at the wire boundary
+(see `docs/log.md`): `index_hint` → `datasource_uid`, `time_window{start,end}`
+→ top-level `from`/`to` (ISO 8601, epoch ms, or Grafana relative like
+`now-1h`), and the per-query slot picks up `ref_id`, `max_data_points`,
+`interval_ms`. The connector posts to `<quickwit_url>/api/ds/query`.
+
 ```json
 {
   "type": "quickwit_query_plan",
@@ -1015,11 +1011,12 @@ The Skill may create query plans. Query plans are not executable production quer
   "service": "login-service",
   "repository": "login-service",
   "code_paths": ["src/phone_normalizer.py", "src/account_lookup.py"],
-  "index_hint": "login-service-prod",
-  "time_window": {
-    "start": "2026-04-30T08:00:00Z",
-    "end": "2026-04-30T10:00:00Z"
-  },
+  "datasource_uid": "login-service-prod",
+  "from": "2026-04-30T08:00:00Z",
+  "to": "2026-04-30T10:00:00Z",
+  "ref_id": "A",
+  "max_data_points": 100,
+  "interval_ms": 1000,
   "query_intent": "Find failed login/account lookup events for the masked phone value from Jira",
   "filters": [
     {"field": "service", "op": "=", "value": "login-service"},
@@ -1096,7 +1093,10 @@ docs/metabase_api.json
 Rules:
 
 ```text
-- evidence_gate loads docs/metabase_api.json through MetabaseApiSpecLoader.
+- evidence_gate loads docs/metabase_api.json on connector init (cached) and
+  fails fast if the spec is missing the endpoints the connector calls. The
+  loader was originally a separate MetabaseApiSpecLoader class; it now lives
+  inline in metabase_connector.py.
 - MetabaseConnector implements only the endpoints needed by approved templates.
 - The Skill never calls Metabase directly.
 - Agent-authored SQL candidates are planning artifacts only.
@@ -1184,16 +1184,16 @@ Every transition must append an audit event.
 
 Use local JSON/JSONL files. Do not start with PostgreSQL, SQLAlchemy, Alembic, Temporal, Redis, or a custom vector platform.
 
+As-built layout (the speculative `state_transitions/`, `deterministic_outcomes/`, and `connector_jobs/` were never needed — request transitions append to `audit/events.jsonl` and the request record itself):
+
 ```text
 evidence_gate/.data/
   sessions/
   sensitive_values/
   evidence_requests/
-  state_transitions/
-  deterministic_outcomes/
-  connector_jobs/
   raw_evidence/
   masked_packages/
+  reports/
   audit/events.jsonl
 ```
 
@@ -1295,14 +1295,16 @@ The AI proved the root cause.
 
 ## 23. Tests Required Before Real Production Connectors
 
-Required boundary tests:
+Required boundary tests (as-built filenames):
 
 ```text
 tests/boundary/test_no_raw_jira_to_agent.py
 tests/boundary/test_no_raw_logs_to_agent.py
-tests/boundary/test_no_raw_db_rows_to_agent.py
-tests/boundary/test_no_credentials_in_traces_or_audit.py
+tests/boundary/test_no_raw_db_to_agent.py
+tests/boundary/test_no_credentials_in_audit.py
+tests/boundary/test_no_credentials_leak.py
 tests/boundary/test_no_raw_evidence_in_reports.py
+tests/boundary/test_no_unsafe_plans_accepted.py
 tests/boundary/test_sensitive_features_without_raw_values.py
 ```
 

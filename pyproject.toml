@@ -16,3 +16,6 @@ dev = [
 members = [
   "evidence_gate",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["evidence_gate/tests"]

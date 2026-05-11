@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "DebugReport",
   "type": "object",
-  "required": ["ticket_id", "evidence_session_id", "summary", "most_likely_root_cause", "confidence"],
+  "required": ["ticket_id", "evidence_session_id", "summary", "most_likely_root_cause", "confidence", "verification_steps", "evidence_ids", "audit_refs"],
   "properties": {
     "ticket_id": { "type": "string" },
     "evidence_session_id": { "type": "string" },

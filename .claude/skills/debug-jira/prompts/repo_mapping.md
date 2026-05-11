@@ -60,8 +60,7 @@ For each selected service:
    both update and build fail, mark `code_review_graph_available: false`
    for this repo and proceed with the Grep/Glob fallback only — do not
    query a stale graph.
-4. Check if code-review-graph is available after the refresh
-   (`graph-status` MCP tool, or the CLI `status` exit code from step 3).
+4. Check if code-review-graph is available after the refresh (`list_graph_stats_tool` MCP, or the CLI `status` exit code from step 3).
 5. If graph is available, use `semantic_search_nodes` to find relevant functions/classes.
 6. If graph is not available, use Grep/Glob to find relevant code.
 7. Record: suspected code paths, functions, log fields, DB entities, SQL references.

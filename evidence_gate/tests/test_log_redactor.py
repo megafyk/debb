@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from evidence_gate.redaction.log_redactor import redact_log_hits, build_masked_log_package
+from evidence_gate.redaction.log_redactor import (
+    build_masked_log_package,
+    extract_correlation_ids,
+    redact_log_hits,
+)
 
 
 def test_redact_email_in_logs():
@@ -78,3 +82,40 @@ def test_build_masked_package():
     assert len(pkg.masked_data["hits"]) == 2
     assert sorted(pkg.masked_data["fields"]) == ["error_code", "timestamp"]
     assert pkg.audit_ref == "AUD-xyz"
+    assert "correlation_ids" not in pkg.masked_data  # absent when none present
+
+
+def test_extract_correlation_ids_priority_and_dedup():
+    raw = [
+        {"contextMap.traceId": "T1", "contextMap.correlationID": "C1", "level": "INFO"},
+        {"contextMap.traceId": "T1", "requestID": "R1", "level": "ERROR"},
+        {"contextMap.traceId": "T2", "sessionID": "S1"},
+        {"contextMap.traceId": "", "requestID": None},  # ignored
+    ]
+    ids = extract_correlation_ids(raw)
+    assert ids["contextMap.traceId"] == ["T1", "T2"]
+    assert ids["contextMap.correlationID"] == ["C1"]
+    assert ids["requestID"] == ["R1"]
+    assert ids["sessionID"] == ["S1"]
+    assert "contextMap.requestID" not in ids  # absent when no values
+
+
+def test_extract_correlation_ids_redacts_pii():
+    # Defensive: misconfigured emitter logs an email as a "traceId".
+    raw = [{"contextMap.traceId": "leak@example.com"}]
+    ids = extract_correlation_ids(raw)
+    assert ids["contextMap.traceId"] == ["[REDACTED_EMAIL]"]
+
+
+def test_build_masked_package_includes_correlation_ids():
+    hits = [{"contextMap.traceId": "T1"}]
+    pkg = build_masked_log_package(
+        evidence_session_id="ESESS-1",
+        evidence_request_id="EREQ-abc",
+        output_profile="default",
+        redacted_hits=hits,
+        hit_count=1,
+        audit_ref="AUD-xyz",
+        correlation_ids={"contextMap.traceId": ["T1"]},
+    )
+    assert pkg.masked_data["correlation_ids"] == {"contextMap.traceId": ["T1"]}

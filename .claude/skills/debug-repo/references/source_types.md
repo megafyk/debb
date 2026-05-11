@@ -50,7 +50,7 @@ Prometheus exposes service metrics. Used when debug-jira needs to correlate late
 ## Adding a new source type
 
 1. Add `schemas/source_<name>.schema.json`.
-2. Add the type name to `VALID_SOURCE_NAMES` and the `_entry_schema_with_inline_refs` mapping in `scripts/registry.py`.
-3. Update the `name` enum and `oneOf` in `schemas/registry_entry.schema.json`.
+2. Update the `name` enum and `oneOf` in `schemas/registry_entry.schema.json`.
+3. Add the new type to the `sources` map in `_entry_schema_with_inline_refs` in `scripts/registry.py` so the script inlines the right metadata schema.
 4. Document the new fields here.
 5. Update `references/debug_jira_integration.md` if debug-jira should consume the new type.

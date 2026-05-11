@@ -291,40 +291,26 @@ async def _get_sanitized_jira_ticket(
     return [TextContent(type="text", text=sanitized.model_dump_json(indent=2))]
 
 
-async def _create_metabase_evidence_request(
+async def _create_evidence_request(
     plan: dict,
     request_store: EvidenceRequestStore,
-    metabase_connector: MetabaseConnector,
-    raw_store: RawEvidenceStore,
-    masked_store: MaskedPackageStore,
-    audit_logger: AuditLogger,
+    validate,
+    execute,
 ) -> list[TextContent]:
     session_id = plan.get("evidence_session_id", "")
     if not session_id:
         return [TextContent(type="text", text=json.dumps({"error": "missing evidence_session_id in plan"}))]
 
-    # Validate the plan
-    result = validate_metabase_request(plan, session_id, request_store)
-
+    result = validate(plan, session_id, request_store)
     if not result.accepted:
-        response = {
+        return [TextContent(type="text", text=json.dumps({
             "evidence_request_id": result.request.evidence_request_id,
             "state": result.request.state,
             "accepted": False,
             "rejection_reason": result.rejection_reason,
-        }
-        return [TextContent(type="text", text=json.dumps(response, indent=2))]
+        }, indent=2))]
 
-    # Execute: validated plan → connector → raw store → redact → masked package
-    package = await execute_metabase_request(
-        request_id=result.request.evidence_request_id,
-        request_store=request_store,
-        metabase_connector=metabase_connector,
-        raw_store=raw_store,
-        masked_store=masked_store,
-        audit_logger=audit_logger,
-        evidence_session_id=session_id,
-    )
+    package = await execute(result.request.evidence_request_id, session_id)
 
     response = {
         "evidence_request_id": result.request.evidence_request_id,
@@ -334,7 +320,6 @@ async def _create_metabase_evidence_request(
     }
     if result.narrowing_applied:
         response["narrowing_applied"] = result.narrowing_applied
-
     return [TextContent(type="text", text=json.dumps(response, indent=2))]
 
 
@@ -346,43 +331,34 @@ async def _create_quickwit_evidence_request(
     masked_store: MaskedPackageStore,
     audit_logger: AuditLogger,
 ) -> list[TextContent]:
-    session_id = plan.get("evidence_session_id", "")
-    if not session_id:
-        return [TextContent(type="text", text=json.dumps({"error": "missing evidence_session_id in plan"}))]
-
-    # Validate the plan
-    result = validate_quickwit_request(plan, session_id, request_store)
-
-    if not result.accepted:
-        response = {
-            "evidence_request_id": result.request.evidence_request_id,
-            "state": result.request.state,
-            "accepted": False,
-            "rejection_reason": result.rejection_reason,
-        }
-        return [TextContent(type="text", text=json.dumps(response, indent=2))]
-
-    # Execute: validated plan → connector → raw store → redact → masked package
-    package = await execute_quickwit_request(
-        request_id=result.request.evidence_request_id,
-        request_store=request_store,
-        quickwit_connector=quickwit_connector,
-        raw_store=raw_store,
-        masked_store=masked_store,
-        audit_logger=audit_logger,
-        evidence_session_id=session_id,
+    return await _create_evidence_request(
+        plan, request_store, validate_quickwit_request,
+        lambda req_id, sid: execute_quickwit_request(
+            request_id=req_id, request_store=request_store,
+            quickwit_connector=quickwit_connector, raw_store=raw_store,
+            masked_store=masked_store, audit_logger=audit_logger,
+            evidence_session_id=sid,
+        ),
     )
 
-    response = {
-        "evidence_request_id": result.request.evidence_request_id,
-        "state": "masked_package_ready",
-        "accepted": True,
-        "evidence_id": package.evidence_id,
-    }
-    if result.narrowing_applied:
-        response["narrowing_applied"] = result.narrowing_applied
 
-    return [TextContent(type="text", text=json.dumps(response, indent=2))]
+async def _create_metabase_evidence_request(
+    plan: dict,
+    request_store: EvidenceRequestStore,
+    metabase_connector: MetabaseConnector,
+    raw_store: RawEvidenceStore,
+    masked_store: MaskedPackageStore,
+    audit_logger: AuditLogger,
+) -> list[TextContent]:
+    return await _create_evidence_request(
+        plan, request_store, validate_metabase_request,
+        lambda req_id, sid: execute_metabase_request(
+            request_id=req_id, request_store=request_store,
+            metabase_connector=metabase_connector, raw_store=raw_store,
+            masked_store=masked_store, audit_logger=audit_logger,
+            evidence_session_id=sid,
+        ),
+    )
 
 
 async def _get_masked_evidence_package(
