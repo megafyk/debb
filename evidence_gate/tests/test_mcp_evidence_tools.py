@@ -13,10 +13,13 @@ from evidence_gate.mcp_server.tools import (
     _get_evidence_request_status,
     _get_masked_evidence_package,
 )
+from evidence_gate.contracts import EvidenceSession
 from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 from evidence_gate.storage.evidence_request_store import EvidenceRequestStore
+from evidence_gate.storage.evidence_session_store import EvidenceSessionStore
 from evidence_gate.storage.json_store import JsonStore
 from evidence_gate.storage.jsonl_event_store import JsonlEventStore
+from evidence_gate.storage.debug_report_evidence_store import DebugReportEvidenceStore
 from evidence_gate.storage.masked_package_store import MaskedPackageStore
 from evidence_gate.storage.raw_evidence_store import RawEvidenceStore
 
@@ -34,7 +37,13 @@ def _make_deps(tmp_path: Path):
     metabase_connector = MetabaseConnector(test_settings, sensitive_store, audit_logger)
     raw_store = RawEvidenceStore(tmp_path)
     masked_store = MaskedPackageStore(tmp_path)
-    return request_store, quickwit_connector, metabase_connector, raw_store, masked_store, audit_logger
+    dr_store = DebugReportEvidenceStore(tmp_path)
+    session_store = EvidenceSessionStore(tmp_path)
+    session_store.save(EvidenceSession(
+        evidence_session_id="ESESS-1", ticket_id="BUG-1",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+    ))
+    return request_store, quickwit_connector, metabase_connector, raw_store, masked_store, dr_store, session_store, audit_logger
 
 
 def _valid_quickwit_plan():
@@ -54,9 +63,9 @@ def _valid_quickwit_plan():
 
 def test_create_quickwit_request_accepted():
     with tempfile.TemporaryDirectory() as tmp:
-        store, qw, _mb, raw, masked, audit = _make_deps(Path(tmp))
+        store, qw, _mb, raw, masked, dr, sess, audit = _make_deps(Path(tmp))
         result = asyncio.run(_create_quickwit_evidence_request(
-            _valid_quickwit_plan(), store, qw, raw, masked, audit,
+            _valid_quickwit_plan(), store, qw, raw, masked, dr, sess, audit,
         ))
         data = json.loads(result[0].text)
         assert data["accepted"] is True
@@ -67,11 +76,11 @@ def test_create_quickwit_request_accepted():
 
 def test_create_quickwit_request_rejected():
     with tempfile.TemporaryDirectory() as tmp:
-        store, qw, _mb, raw, masked, audit = _make_deps(Path(tmp))
+        store, qw, _mb, raw, masked, dr, sess, audit = _make_deps(Path(tmp))
         plan = _valid_quickwit_plan()
         plan["query_intent"] = "Find records for user@evil.com"
         result = asyncio.run(_create_quickwit_evidence_request(
-            plan, store, qw, raw, masked, audit,
+            plan, store, qw, raw, masked, dr, sess, audit,
         ))
         data = json.loads(result[0].text)
         assert data["accepted"] is False
@@ -80,9 +89,9 @@ def test_create_quickwit_request_rejected():
 
 def test_create_request_missing_session_id():
     with tempfile.TemporaryDirectory() as tmp:
-        store, qw, _mb, raw, masked, audit = _make_deps(Path(tmp))
+        store, qw, _mb, raw, masked, dr, sess, audit = _make_deps(Path(tmp))
         result = asyncio.run(_create_quickwit_evidence_request(
-            {"service": "x"}, store, qw, raw, masked, audit,
+            {"service": "x"}, store, qw, raw, masked, dr, sess, audit,
         ))
         data = json.loads(result[0].text)
         assert "error" in data
@@ -90,9 +99,9 @@ def test_create_request_missing_session_id():
 
 def test_get_evidence_request_status():
     with tempfile.TemporaryDirectory() as tmp:
-        store, qw, _mb, raw, masked, audit = _make_deps(Path(tmp))
+        store, qw, _mb, raw, masked, dr, sess, audit = _make_deps(Path(tmp))
         create_result = asyncio.run(_create_quickwit_evidence_request(
-            _valid_quickwit_plan(), store, qw, raw, masked, audit,
+            _valid_quickwit_plan(), store, qw, raw, masked, dr, sess, audit,
         ))
         req_id = json.loads(create_result[0].text)["evidence_request_id"]
 
@@ -104,9 +113,9 @@ def test_get_evidence_request_status():
 
 def test_get_masked_evidence_package():
     with tempfile.TemporaryDirectory() as tmp:
-        store, qw, _mb, raw, masked, audit = _make_deps(Path(tmp))
+        store, qw, _mb, raw, masked, dr, sess, audit = _make_deps(Path(tmp))
         create_result = asyncio.run(_create_quickwit_evidence_request(
-            _valid_quickwit_plan(), store, qw, raw, masked, audit,
+            _valid_quickwit_plan(), store, qw, raw, masked, dr, sess, audit,
         ))
         data = json.loads(create_result[0].text)
         evidence_id = data["evidence_id"]
@@ -120,7 +129,7 @@ def test_get_masked_evidence_package():
 
 def test_get_status_missing_request():
     with tempfile.TemporaryDirectory() as tmp:
-        store, _, _, _, _, _ = _make_deps(Path(tmp))
+        store, *_ = _make_deps(Path(tmp))
         result = asyncio.run(_get_evidence_request_status("EREQ-nonexistent", store))
         data = json.loads(result[0].text)
         assert "error" in data
@@ -147,9 +156,9 @@ def _valid_metabase_plan():
 
 def test_create_metabase_request_accepted():
     with tempfile.TemporaryDirectory() as tmp:
-        store, _qw, mb, raw, masked, audit = _make_deps(Path(tmp))
+        store, _qw, mb, raw, masked, dr, sess, audit = _make_deps(Path(tmp))
         result = asyncio.run(_create_metabase_evidence_request(
-            _valid_metabase_plan(), store, mb, raw, masked, audit,
+            _valid_metabase_plan(), store, mb, raw, masked, dr, sess, audit,
         ))
         data = json.loads(result[0].text)
         assert data["accepted"] is True
@@ -159,11 +168,11 @@ def test_create_metabase_request_accepted():
 
 def test_create_metabase_request_with_select_star_rejected():
     with tempfile.TemporaryDirectory() as tmp:
-        store, _qw, mb, raw, masked, audit = _make_deps(Path(tmp))
+        store, _qw, mb, raw, masked, dr, sess, audit = _make_deps(Path(tmp))
         plan = _valid_metabase_plan()
         plan["sql_candidate"] = "SELECT * FROM accounts"
         result = asyncio.run(_create_metabase_evidence_request(
-            plan, store, mb, raw, masked, audit,
+            plan, store, mb, raw, masked, dr, sess, audit,
         ))
         data = json.loads(result[0].text)
         assert data["accepted"] is False
@@ -171,9 +180,9 @@ def test_create_metabase_request_with_select_star_rejected():
 
 def test_metabase_masked_package_has_diagnostic_features():
     with tempfile.TemporaryDirectory() as tmp:
-        store, _qw, mb, raw, masked, audit = _make_deps(Path(tmp))
+        store, _qw, mb, raw, masked, dr, sess, audit = _make_deps(Path(tmp))
         result = asyncio.run(_create_metabase_evidence_request(
-            _valid_metabase_plan(), store, mb, raw, masked, audit,
+            _valid_metabase_plan(), store, mb, raw, masked, dr, sess, audit,
         ))
         data = json.loads(result[0].text)
         evidence_id = data["evidence_id"]

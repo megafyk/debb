@@ -15,9 +15,34 @@ from evidence_gate.redaction.log_redactor import (
     extract_correlation_ids,
     redact_log_hits,
 )
+from evidence_gate.storage.debug_report_evidence_store import DebugReportEvidenceStore
 from evidence_gate.storage.evidence_request_store import EvidenceRequestStore
+from evidence_gate.storage.evidence_session_store import EvidenceSessionStore
 from evidence_gate.storage.masked_package_store import MaskedPackageStore
 from evidence_gate.storage.raw_evidence_store import RawEvidenceStore
+
+
+def _resolve_debug_report_folder(
+    session_store: EvidenceSessionStore, evidence_session_id: str,
+) -> str:
+    """Build the debug_reports/ subdir label: <TICKET_ID>_<DEBUG_SESSION_ID>.
+
+    The DEBUG_SESSION_ID is the W3C / OpenTelemetry trace id minted in
+    ``_start_debugging_session`` (the trace_id field doubles as the
+    per-debug-session identifier in the folder name). Both halves are
+    required — refuse to write evidence under a partial label rather
+    than silently produce ``<ticket>_`` or ``_<session>`` directories
+    that can't be cleaned up by id later.
+    """
+    session = session_store.get(evidence_session_id)
+    if session is None:
+        raise ValueError(f"Session not found: {evidence_session_id}")
+    if not session.ticket_id or not session.trace_id:
+        raise ValueError(
+            f"Session {evidence_session_id} missing ticket_id or trace_id; "
+            "cannot build debug_reports folder label",
+        )
+    return f"{session.ticket_id}_{session.trace_id}"
 
 
 async def execute_quickwit_request(
@@ -26,6 +51,8 @@ async def execute_quickwit_request(
     quickwit_connector: QuickwitConnector,
     raw_store: RawEvidenceStore,
     masked_store: MaskedPackageStore,
+    debug_report_evidence_store: DebugReportEvidenceStore,
+    session_store: EvidenceSessionStore,
     audit_logger: AuditLogger,
     evidence_session_id: str,
 ) -> MaskedEvidencePackage:
@@ -49,6 +76,12 @@ async def execute_quickwit_request(
         redacted = redact_log_hits(raw_hits, plan.fields_requested)
         correlation_ids = extract_correlation_ids(raw_hits)
 
+        # Build the package first so we have an evidence_id, then persist the
+        # masked records under debug_reports/<TICKET_ID>_<DEBUG_SESSION_ID>/
+        # evidence/<eid>.jsonl. The path + line_count flow back as
+        # evidence_file so the agent can cite specific lines as verifiable
+        # references in the debug report (which itself lives in the same
+        # per-session folder per SKILL.md step 2).
         audit_event = audit_logger.log(
             evidence_session_id,
             "masked_package_built",
@@ -63,6 +96,10 @@ async def execute_quickwit_request(
             hit_count=len(raw_hits),
             audit_ref=audit_event.audit_id,
             correlation_ids=correlation_ids,
+        )
+        folder_id = _resolve_debug_report_folder(session_store, evidence_session_id)
+        package.evidence_file = debug_report_evidence_store.store(
+            folder_id, package.evidence_id, redacted,
         )
         masked_store.save(package)
 
@@ -90,6 +127,8 @@ async def execute_metabase_request(
     metabase_connector: MetabaseConnector,
     raw_store: RawEvidenceStore,
     masked_store: MaskedPackageStore,
+    debug_report_evidence_store: DebugReportEvidenceStore,
+    session_store: EvidenceSessionStore,
     audit_logger: AuditLogger,
     evidence_session_id: str,
 ) -> MaskedEvidencePackage:
@@ -124,6 +163,10 @@ async def execute_metabase_request(
             redacted_rows=redacted,
             diagnostic_features=features,
             audit_ref=audit_event.audit_id,
+        )
+        folder_id = _resolve_debug_report_folder(session_store, evidence_session_id)
+        package.evidence_file = debug_report_evidence_store.store(
+            folder_id, package.evidence_id, redacted,
         )
         masked_store.save(package)
 

@@ -152,6 +152,7 @@ class MaskedEvidencePackage(BaseModel):
     masked_data: dict = {}
     diagnostic_features: list[DiagnosticFeature] = []
     audit_ref: str = ""
+    evidence_file: dict = {}  # {"path": "...jsonl", "format": "jsonl", "line_count": N}
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

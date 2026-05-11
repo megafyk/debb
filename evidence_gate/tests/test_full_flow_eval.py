@@ -17,6 +17,7 @@ from evidence_gate.mcp_server.tools import (
     _start_debugging_session,
     _submit_debug_report,
 )
+from evidence_gate.storage.debug_report_evidence_store import DebugReportEvidenceStore
 from evidence_gate.storage.evidence_session_store import EvidenceSessionStore
 from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 from evidence_gate.storage.evidence_request_store import EvidenceRequestStore
@@ -43,6 +44,7 @@ def _make_all_deps(tmp_path: Path):
     metabase = MetabaseConnector(test_settings, sensitive_store, audit_logger)
     raw_store = RawEvidenceStore(tmp_path)
     masked_store = MaskedPackageStore(tmp_path)
+    dr_store = DebugReportEvidenceStore(tmp_path)
     report_store = JsonStore(tmp_path, "reports")
     return {
         "session_store": session_store,
@@ -54,6 +56,7 @@ def _make_all_deps(tmp_path: Path):
         "metabase": metabase,
         "raw_store": raw_store,
         "masked_store": masked_store,
+        "dr_store": dr_store,
         "report_store": report_store,
     }
 
@@ -90,7 +93,8 @@ def test_full_debugging_flow():
         qw_result = asyncio.run(
             _create_quickwit_evidence_request(
                 qw_plan,
-                d["request_store"], d["quickwit"], d["raw_store"], d["masked_store"], d["audit_logger"],
+                d["request_store"], d["quickwit"], d["raw_store"], d["masked_store"],
+                d["dr_store"], d["session_store"], d["audit_logger"],
             )
         )
         qw_data = json.loads(qw_result[0].text)

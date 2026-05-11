@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+import secrets
 
 from mcp.server import Server
 from mcp.types import TextContent, Tool
@@ -25,6 +27,7 @@ from evidence_gate.request_services.request_pipeline import (
     validate_quickwit_request,
 )
 from evidence_gate.storage.evidence_session_store import EvidenceSessionStore
+from evidence_gate.storage.debug_report_evidence_store import DebugReportEvidenceStore
 from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 from evidence_gate.storage.evidence_request_store import EvidenceRequestStore
 from evidence_gate.storage.json_store import JsonStore
@@ -46,11 +49,12 @@ def _build_dependencies():
     metabase_connector = MetabaseConnector(settings, sensitive_store, audit_logger)
     raw_store = RawEvidenceStore(data_path)
     masked_store = MaskedPackageStore(data_path)
+    debug_report_evidence_store = DebugReportEvidenceStore(settings.project_root_path)
     report_store = JsonStore(data_path, "reports")
     return (
         session_store, sensitive_store, audit_logger, jira_connector,
         request_store, quickwit_connector, metabase_connector,
-        raw_store, masked_store, report_store,
+        raw_store, masked_store, debug_report_evidence_store, report_store,
     )
 
 
@@ -58,7 +62,7 @@ def register_tools(server: Server) -> None:
     (
         session_store, sensitive_store, audit_logger, jira_connector,
         request_store, quickwit_connector, metabase_connector,
-        raw_store, masked_store, report_store,
+        raw_store, masked_store, debug_report_evidence_store, report_store,
     ) = _build_dependencies()
 
     @server.list_tools()
@@ -175,12 +179,14 @@ def register_tools(server: Server) -> None:
         elif name == "create_quickwit_evidence_request":
             return await _create_quickwit_evidence_request(
                 arguments["plan"], request_store, quickwit_connector,
-                raw_store, masked_store, audit_logger,
+                raw_store, masked_store, debug_report_evidence_store,
+                session_store, audit_logger,
             )
         elif name == "create_metabase_evidence_request":
             return await _create_metabase_evidence_request(
                 arguments["plan"], request_store, metabase_connector,
-                raw_store, masked_store, audit_logger,
+                raw_store, masked_store, debug_report_evidence_store,
+                session_store, audit_logger,
             )
         elif name == "get_evidence_request_status":
             return await _get_evidence_request_status(
@@ -200,11 +206,22 @@ def register_tools(server: Server) -> None:
             return [TextContent(type="text", text=json.dumps({"error": f"Unknown tool: {name}"}))]
 
 
+_TICKET_ID_RE = re.compile(r"^[A-Z][A-Z0-9]*-\d+$")
+
+
 def _parse_ticket_id(ticket_id_or_url: str) -> str:
-    # Handle URLs like https://domain.atlassian.net/browse/BUG-123
+    # Handle URLs like https://domain.atlassian.net/browse/BUG-123. The tail
+    # segment must match the Jira ticket-id shape: this id flows into the
+    # debug_reports/<TICKET_ID>_<DEBUG_SESSION_ID>/ folder name, so we reject
+    # anything that could produce empty/odd directory components (empty
+    # string, "..", whitespace, slashes already stripped by split).
     if "/" in ticket_id_or_url:
-        return ticket_id_or_url.rstrip("/").split("/")[-1]
-    return ticket_id_or_url
+        candidate = ticket_id_or_url.rstrip("/").split("/")[-1]
+    else:
+        candidate = ticket_id_or_url
+    if not _TICKET_ID_RE.match(candidate):
+        raise ValueError(f"Invalid Jira ticket id: {candidate!r}")
+    return candidate
 
 
 async def _start_debugging_session(
@@ -220,6 +237,13 @@ async def _start_debugging_session(
 
     existing = session_store.find_idempotent(ticket_id, idempotency_key)
     if existing and existing.sanitized_ticket is not None:
+        # Sessions created before OTel auto-generation may have an empty
+        # trace_id. Backfill on re-entry so downstream evidence requests can
+        # build the debug_reports/<TICKET_ID>_<DEBUG_SESSION_ID> folder label
+        # (the trace_id field carries the DEBUG_SESSION_ID).
+        if not existing.trace_id:
+            existing.trace_id = secrets.token_hex(16)
+            session_store.save(existing)
         ctx = EvidenceSessionContext(
             evidence_session_id=existing.evidence_session_id,
             ticket_id=ticket_id,
@@ -230,6 +254,14 @@ async def _start_debugging_session(
             audit_refs=existing.audit_refs,
         )
         return [TextContent(type="text", text=ctx.model_dump_json(indent=2))]
+
+    # OpenTelemetry trace IDs are 16 random bytes rendered as 32 lowercase hex
+    # chars (W3C trace-context §3.2.2.3). Generate one when the caller didn't
+    # supply theirs so every session has a stable id for cross-system
+    # correlation and to serve as the DEBUG_SESSION_ID half of the
+    # debug_reports/<TICKET_ID>_<DEBUG_SESSION_ID> folder layout.
+    if not trace_id:
+        trace_id = secrets.token_hex(16)
 
     session = EvidenceSession(
         ticket_id=ticket_id,
@@ -318,6 +350,8 @@ async def _create_evidence_request(
         "accepted": True,
         "evidence_id": package.evidence_id,
     }
+    if package.evidence_file:
+        response["evidence_file"] = package.evidence_file
     if result.narrowing_applied:
         response["narrowing_applied"] = result.narrowing_applied
     return [TextContent(type="text", text=json.dumps(response, indent=2))]
@@ -329,6 +363,8 @@ async def _create_quickwit_evidence_request(
     quickwit_connector: QuickwitConnector,
     raw_store: RawEvidenceStore,
     masked_store: MaskedPackageStore,
+    debug_report_evidence_store: DebugReportEvidenceStore,
+    session_store: EvidenceSessionStore,
     audit_logger: AuditLogger,
 ) -> list[TextContent]:
     return await _create_evidence_request(
@@ -336,7 +372,10 @@ async def _create_quickwit_evidence_request(
         lambda req_id, sid: execute_quickwit_request(
             request_id=req_id, request_store=request_store,
             quickwit_connector=quickwit_connector, raw_store=raw_store,
-            masked_store=masked_store, audit_logger=audit_logger,
+            masked_store=masked_store,
+            debug_report_evidence_store=debug_report_evidence_store,
+            session_store=session_store,
+            audit_logger=audit_logger,
             evidence_session_id=sid,
         ),
     )
@@ -348,6 +387,8 @@ async def _create_metabase_evidence_request(
     metabase_connector: MetabaseConnector,
     raw_store: RawEvidenceStore,
     masked_store: MaskedPackageStore,
+    debug_report_evidence_store: DebugReportEvidenceStore,
+    session_store: EvidenceSessionStore,
     audit_logger: AuditLogger,
 ) -> list[TextContent]:
     return await _create_evidence_request(
@@ -355,7 +396,10 @@ async def _create_metabase_evidence_request(
         lambda req_id, sid: execute_metabase_request(
             request_id=req_id, request_store=request_store,
             metabase_connector=metabase_connector, raw_store=raw_store,
-            masked_store=masked_store, audit_logger=audit_logger,
+            masked_store=masked_store,
+            debug_report_evidence_store=debug_report_evidence_store,
+            session_store=session_store,
+            audit_logger=audit_logger,
             evidence_session_id=sid,
         ),
     )

@@ -7,11 +7,13 @@ from pathlib import Path
 from evidence_gate.config import Settings
 from evidence_gate.audit_logger import AuditLogger
 from evidence_gate.connectors.metabase_connector import MetabaseConnector
-from evidence_gate.contracts import EvidenceRequest
+from evidence_gate.contracts import EvidenceRequest, EvidenceSession
 from evidence_gate.redaction.db_redactor import redact_db_rows
 from evidence_gate.request_services.evidence_executor import execute_metabase_request
+from evidence_gate.storage.debug_report_evidence_store import DebugReportEvidenceStore
 from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 from evidence_gate.storage.evidence_request_store import EvidenceRequestStore
+from evidence_gate.storage.evidence_session_store import EvidenceSessionStore
 from evidence_gate.storage.json_store import JsonStore
 from evidence_gate.storage.jsonl_event_store import JsonlEventStore
 from evidence_gate.storage.masked_package_store import MaskedPackageStore
@@ -26,7 +28,13 @@ def _setup(tmp_path: Path):
     connector = MetabaseConnector(test_settings, sensitive_store, audit)
     raw_store = RawEvidenceStore(tmp_path)
     masked_store = MaskedPackageStore(tmp_path)
-    return request_store, connector, raw_store, masked_store, audit, sensitive_store
+    dr_store = DebugReportEvidenceStore(tmp_path)
+    session_store = EvidenceSessionStore(tmp_path)
+    session_store.save(EvidenceSession(
+        evidence_session_id="ESESS-1", ticket_id="BUG-1",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+    ))
+    return request_store, connector, raw_store, masked_store, dr_store, session_store, audit, sensitive_store
 
 
 def _make_bounded_metabase(request_store):
@@ -48,10 +56,10 @@ def _make_bounded_metabase(request_store):
 
 def test_metabase_credentials_not_in_masked_package():
     with tempfile.TemporaryDirectory() as tmp:
-        store, conn, raw, masked, audit, _ = _setup(Path(tmp))
+        store, conn, raw, masked, dr, sess, audit, _ = _setup(Path(tmp))
         req = _make_bounded_metabase(store)
         pkg = asyncio.run(execute_metabase_request(
-            req.evidence_request_id, store, conn, raw, masked, audit, "ESESS-1",
+            req.evidence_request_id, store, conn, raw, masked, dr, sess, audit, "ESESS-1",
         ))
         pkg_json = pkg.model_dump_json()
         assert "secret_user" not in pkg_json
@@ -60,10 +68,10 @@ def test_metabase_credentials_not_in_masked_package():
 
 def test_raw_db_rows_not_in_masked_package():
     with tempfile.TemporaryDirectory() as tmp:
-        store, conn, raw, masked, audit, _ = _setup(Path(tmp))
+        store, conn, raw, masked, dr, sess, audit, _ = _setup(Path(tmp))
         req = _make_bounded_metabase(store)
         pkg = asyncio.run(execute_metabase_request(
-            req.evidence_request_id, store, conn, raw, masked, audit, "ESESS-1",
+            req.evidence_request_id, store, conn, raw, masked, dr, sess, audit, "ESESS-1",
         ))
         # Raw store has data
         raw_data = raw.load(req.evidence_request_id)

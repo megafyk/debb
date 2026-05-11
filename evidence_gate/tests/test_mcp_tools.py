@@ -32,6 +32,17 @@ def test_parse_ticket_id_plain():
     assert _parse_ticket_id("BUG-123") == "BUG-123"
 
 
+def test_parse_ticket_id_rejects_malformed():
+    """ticket_id flows into the debug_reports/<TICKET_ID>_<DEBUG_SESSION_ID>/
+    folder name — anything that doesn't match the Jira shape must be rejected
+    upfront so we never persist evidence under a malformed directory."""
+    import pytest as _pytest
+
+    for bad in ("", "..", "../etc", "no-dash", "BUG-", "-123", "  BUG-123  ", "bug-123"):
+        with _pytest.raises(ValueError):
+            _parse_ticket_id(bad)
+
+
 def test_start_debugging_session():
     with tempfile.TemporaryDirectory() as tmp:
         deps = _make_deps(Path(tmp))
@@ -45,6 +56,74 @@ def test_start_debugging_session():
         assert data["sanitized_ticket"]["summary"] == "Login fails for users with phone numbers missing leading zero"
         # Verify redaction happened
         assert "somchai@example.com" not in data["sanitized_ticket"]["description_sanitized"]
+
+
+def test_start_debugging_session_generates_otel_trace_id_when_absent():
+    """No trace_id passed → mint a 32-hex-char OTel trace id (W3C §3.2.2.3)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        deps = _make_deps(Path(tmp))
+        result = asyncio.run(
+            _start_debugging_session("BUG-123", "", "", *deps)
+        )
+        data = json.loads(result[0].text)
+        trace_id = data["trace_id"]
+        assert len(trace_id) == 32
+        assert all(c in "0123456789abcdef" for c in trace_id)
+        # Not the OTel "invalid" all-zeros id.
+        assert trace_id != "0" * 32
+
+
+def test_start_debugging_session_preserves_caller_supplied_trace_id():
+    """When a caller passes a trace_id, keep it verbatim so cross-system
+    correlation (existing W3C traceparent) survives the boundary."""
+    with tempfile.TemporaryDirectory() as tmp:
+        deps = _make_deps(Path(tmp))
+        supplied = "4bf92f3577b34da6a3ce929d0e0e4736"
+        result = asyncio.run(
+            _start_debugging_session("BUG-123", supplied, "", *deps)
+        )
+        data = json.loads(result[0].text)
+        assert data["trace_id"] == supplied
+
+
+def test_idempotent_reentry_backfills_empty_trace_id():
+    """Legacy sessions saved before OTel auto-gen have trace_id=''. On
+    idempotent re-entry we must mint one and persist it back — otherwise
+    downstream evidence requests can't build the
+    debug_reports/<TICKET_ID>_<DEBUG_SESSION_ID> folder (DEBUG_SESSION_ID =
+    trace_id) and fail with a misleading 'connector failed' message."""
+    from evidence_gate.contracts import EvidenceSession, SanitizedTicketContext
+
+    with tempfile.TemporaryDirectory() as tmp:
+        deps = _make_deps(Path(tmp))
+        session_store = deps[0]
+
+        # Simulate a pre-OTel session with empty trace_id but a cached
+        # sanitized ticket (so the idempotent re-entry branch fires).
+        legacy = EvidenceSession(
+            ticket_id="BUG-123", trace_id="", idempotency_key="key-1",
+            sanitized_ticket=SanitizedTicketContext(
+                ticket_id="BUG-123", summary="s", issue_type="bug",
+                priority="P2", status="open", description_sanitized="d",
+            ),
+        )
+        session_store.save(legacy)
+
+        result = asyncio.run(
+            _start_debugging_session("BUG-123", "", "key-1", *deps)
+        )
+        data = json.loads(result[0].text)
+
+        # Returned context has a fresh OTel trace id.
+        trace_id = data["trace_id"]
+        assert len(trace_id) == 32
+        assert all(c in "0123456789abcdef" for c in trace_id)
+
+        # And it was persisted — a second re-entry returns the same id.
+        again = asyncio.run(
+            _start_debugging_session("BUG-123", "", "key-1", *deps)
+        )
+        assert json.loads(again[0].text)["trace_id"] == trace_id
 
 
 def test_get_sanitized_jira_ticket():

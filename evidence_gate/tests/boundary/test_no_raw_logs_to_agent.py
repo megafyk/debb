@@ -8,10 +8,12 @@ from pathlib import Path
 from evidence_gate.config import Settings
 from evidence_gate.audit_logger import AuditLogger
 from evidence_gate.connectors.quickwit_connector import QuickwitConnector
-from evidence_gate.contracts import EvidenceRequest
+from evidence_gate.contracts import EvidenceRequest, EvidenceSession
 from evidence_gate.request_services.evidence_executor import execute_quickwit_request
+from evidence_gate.storage.debug_report_evidence_store import DebugReportEvidenceStore
 from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 from evidence_gate.storage.evidence_request_store import EvidenceRequestStore
+from evidence_gate.storage.evidence_session_store import EvidenceSessionStore
 from evidence_gate.storage.json_store import JsonStore
 from evidence_gate.storage.jsonl_event_store import JsonlEventStore
 from evidence_gate.storage.masked_package_store import MaskedPackageStore
@@ -40,6 +42,12 @@ def _run_pipeline(tmp_path: Path, settings: Settings):
     request_store = EvidenceRequestStore(json_store, audit_logger)
     raw_store = RawEvidenceStore(tmp_path)
     masked_store = MaskedPackageStore(tmp_path)
+    dr_store = DebugReportEvidenceStore(tmp_path)
+    session_store = EvidenceSessionStore(tmp_path)
+    session_store.save(EvidenceSession(
+        evidence_session_id="ESESS-1", ticket_id="BUG-1",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+    ))
 
     req = EvidenceRequest(
         evidence_session_id="ESESS-1",
@@ -53,7 +61,7 @@ def _run_pipeline(tmp_path: Path, settings: Settings):
     pkg = asyncio.run(
         execute_quickwit_request(
             req.evidence_request_id, request_store, connector,
-            raw_store, masked_store, audit_logger, "ESESS-1",
+            raw_store, masked_store, dr_store, session_store, audit_logger, "ESESS-1",
         )
     )
     return pkg, raw_store, req.evidence_request_id

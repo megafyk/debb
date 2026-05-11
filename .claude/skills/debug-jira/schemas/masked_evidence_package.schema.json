@@ -22,6 +22,15 @@
       }
     },
     "audit_ref": { "type": "string" },
+    "evidence_file": {
+      "type": "object",
+      "description": "On-disk JSONL of the masked records, one record per line. Cite hits in reports as <path>:L<line_number>.",
+      "properties": {
+        "path": { "type": "string" },
+        "format": { "type": "string", "enum": ["jsonl"] },
+        "line_count": { "type": "integer", "minimum": 0 }
+      }
+    },
     "created_at": { "type": "string", "format": "date-time" }
   }
 }

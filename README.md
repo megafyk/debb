@@ -109,13 +109,15 @@ evidence_gate/
     connectors/              # Jira, Quickwit, Metabase (live + fixture mode)
     redaction/               # PII extraction, log/DB/Jira redaction, leakage patterns
     request_services/        # Schema/safety/bounds checks, executor, report reviewer
-    storage/                 # Session, sensitive-value, request, raw + masked stores
+    storage/                 # Session, sensitive-value, request, raw + masked + debug-report stores
     mcp_server/              # MCP stdio server, tool registration (8 tools)
-  tests/                     # 198 tests
+  tests/                     # 214 tests
     boundary/                # 28 trust-boundary tests
 docs/
   debugging_system_implementation_plan.md  # Section 3 main flow, 3.1 alternative
   log.md                     # ADR (architecture decision record)
+debug_reports/               # Per-session masked-evidence JSONL (gitignored)
+  <JIRA_TICKET_ID>_<OTEL_TRACE_ID>/evidence/EVID-<id>.jsonl
 ```
 
 ## How It Works
@@ -127,9 +129,9 @@ docs/
 5. Skill consults the **debug-repo** registry to pick candidate service repos (see [Registering service repos](#registering-service-repos))
 6. Agent builds query plans (log searches, DB lookups) grounded in code
 7. Skill submits plans → evidence_gate validates (schema, safety, bounds)
-8. evidence_gate executes against Quickwit/Metabase, redacts results
-9. Agent receives only masked evidence packages
-10. Agent writes a debug report citing evidence IDs and code paths
+8. evidence_gate executes against Quickwit/Metabase, redacts results, and writes the masked records to `debug_reports/<JIRA_TICKET_ID>_<OTEL_TRACE_ID>/evidence/EVID-<id>.jsonl` (one record per line)
+9. Agent receives a masked evidence package whose `evidence_file: {path, format, line_count}` points at that JSONL
+10. Agent writes a debug report citing evidence IDs, code paths, and individual hits as `<path>:L<n>`
 11. Skill submits report → programmatic review checks for leakage
 
 ## Registering service repos
@@ -157,9 +159,11 @@ All settings use the `EVIDENCE_GATE_` prefix:
 | `EVIDENCE_GATE_JIRA_BASE_URL` | Jira Cloud instance URL |
 | `EVIDENCE_GATE_JIRA_USERNAME` | Atlassian email |
 | `EVIDENCE_GATE_JIRA_PASSWORD` | Atlassian API token |
-| `EVIDENCE_GATE_QUICKWIT_URL` | Quickwit search endpoint |
+| `EVIDENCE_GATE_QUICKWIT_URL` | Quickwit search endpoint (Grafana `/ds/query` proxy) |
 | `EVIDENCE_GATE_QUICKWIT_USERNAME` | Quickwit Basic Auth user |
 | `EVIDENCE_GATE_QUICKWIT_PASSWORD` | Quickwit Basic Auth password |
+| `EVIDENCE_GATE_QUICKWIT_ORG_ID` | Grafana org that owns the data source (0 = omit `X-Grafana-Org-Id`) |
+| `EVIDENCE_GATE_PROJECT_ROOT` | *Optional.* Override for `debug_reports/` location (default: repo root) |
 | `EVIDENCE_GATE_METABASE_URL` | Metabase instance URL |
 | `EVIDENCE_GATE_METABASE_USERNAME` | Metabase email |
 | `EVIDENCE_GATE_METABASE_PASSWORD` | Metabase password |
@@ -169,7 +173,7 @@ When credentials are not set, connectors run in **fixture mode** (return synthet
 ## Development
 
 ```bash
-make test            # Run all 198 tests
+make test            # Run all 214 tests
 make test-boundary   # Run 28 boundary tests
 make lint            # Syntax + import check
 

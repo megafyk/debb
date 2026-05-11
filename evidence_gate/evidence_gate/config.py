@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     quickwit_url: str = ""
     quickwit_username: str = ""
     quickwit_password: str = ""
+    quickwit_org_id: int = 0
 
     metabase_enabled: bool = True
     metabase_url: str = ""
@@ -27,10 +28,17 @@ class Settings(BaseSettings):
     metabase_password: str = ""
 
     data_dir: str = ".data"
+    project_root: str = ""
 
     @property
     def data_path(self) -> Path:
         return Path(__file__).resolve().parents[1] / self.data_dir
+
+    @property
+    def project_root_path(self) -> Path:
+        if self.project_root:
+            return Path(self.project_root)
+        return Path(__file__).resolve().parents[2]
 
 
 settings = Settings()

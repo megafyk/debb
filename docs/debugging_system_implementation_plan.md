@@ -1,6 +1,8 @@
 # AI-Assisted Production Debugging System — Skill-First Implementation Plan
 
-> **Status (2026-05-08):** Milestones 1–8 complete. 198 tests passing (28 boundary). 8 MCP tools live. This document now describes the as-built system; deviations from the original plan are noted inline.
+> **Status (2026-05-11):** Milestones 1–8 complete. 214 tests passing (28 boundary). 8 MCP tools live. This document now describes the as-built system; deviations from the original plan are noted inline.
+>
+> **Post-M8 hardening:** Quickwit connector reshaped for Grafana `/ds/query` — Lucene-quoted filter literals, `(a OR b)` for the `in` op, plugin/org headers, 30s cold-start timeout (§16). Per-debug-session evidence now lands on disk as JSONL at `debug_reports/<JIRA_TICKET_ID>_<OTEL_TRACE_ID>/evidence/<EVID>.jsonl`; the agent cites individual hits as `path:L<n>` to ground report claims (§20, §22). `start_debugging_session` auto-mints a W3C/OTel trace_id when the caller passes none, and backfills legacy idempotent sessions (§13). `_parse_ticket_id` validates the Jira-shape at the API boundary.
 
 ## 0. Purpose
 
@@ -674,20 +676,20 @@ masked evidence package
 
 ```text
 - MCP server / safe API
-- EvidenceSession registry
+- EvidenceSession registry (auto-mints W3C/OTel trace_id when caller passes none)
 - Sensitive value session store
 - Jira REST ingestion
 - Jira redaction and normalization
 - Connector configuration loaded from `.env` with `python-dotenv`
 - Query plan validation
 - Request narrowing
-- Quickwit connector
+- Quickwit connector (Grafana `/ds/query`; auto-quotes Lucene filter literals)
 - Metabase API spec loading from docs/metabase_api.json
 - Metabase connector
 - Sensitive value remapping during connector execution only
 - Raw evidence store
 - Redaction gateway
-- Masked evidence package builder
+- Masked evidence package builder (incl. per-request `evidence_file` JSONL writer)
 - Audit log
 - Retention cleanup
 - Boundary tests
@@ -753,6 +755,7 @@ evidence_gate/
       evidence_request_store.py
       raw_evidence_store.py
       masked_package_store.py
+      debug_report_evidence_store.py   # writes debug_reports/<TICKET>_<TRACE>/evidence/<EVID>.jsonl
 
   tests/
     boundary/
@@ -778,6 +781,11 @@ submit_debug_report
 The original plan also listed an untyped `create_evidence_request`; the
 typed Quickwit/Metabase variants cover the same surface and the untyped
 one was never built.
+
+`create_quickwit_evidence_request` and `create_metabase_evidence_request`
+responses now include `evidence_file: {path, format, line_count}` inline
+when the masked package is ready, so the agent can cite specific lines as
+report references without a second `get_masked_evidence_package` call.
 
 Do not expose:
 
@@ -806,17 +814,22 @@ EVIDENCE_GATE_JIRA_BASE_URL=https://your-domain.atlassian.net
 EVIDENCE_GATE_JIRA_USERNAME=your-atlassian-email@example.com
 EVIDENCE_GATE_JIRA_PASSWORD=your-atlassian-api-token
 
-# Quickwit (set ENABLED=false to force fixture mode even if URL is set)
+# Quickwit via Grafana data-source proxy (set ENABLED=false for fixture mode)
 EVIDENCE_GATE_QUICKWIT_ENABLED=true
 EVIDENCE_GATE_QUICKWIT_URL=http://localhost:7280
 EVIDENCE_GATE_QUICKWIT_USERNAME=quickwit-user
 EVIDENCE_GATE_QUICKWIT_PASSWORD=quickwit-password
+# Grafana org that owns the Quickwit data source (0 = omit X-Grafana-Org-Id)
+EVIDENCE_GATE_QUICKWIT_ORG_ID=0
 
 # Metabase (set ENABLED=false to force fixture mode even if URL is set)
 EVIDENCE_GATE_METABASE_ENABLED=true
 EVIDENCE_GATE_METABASE_URL=http://localhost:3000
 EVIDENCE_GATE_METABASE_USERNAME=metabase-user@example.com
 EVIDENCE_GATE_METABASE_PASSWORD=metabase-password
+
+# Optional: override the project root used for debug_reports/ (defaults to repo root)
+# EVIDENCE_GATE_PROJECT_ROOT=/absolute/path/to/project
 ```
 
 Each connector's `is_live` requires both the `*_ENABLED` flag (default `true`) and a non-empty URL. When either is missing, the connector returns fixture data — useful for tests and local development.
@@ -920,6 +933,18 @@ raw PII
 
 `evidence_gate` creates an EvidenceSession for every ticket debugging flow.
 
+`trace_id` follows the W3C / OpenTelemetry trace-context shape: 16 random
+bytes rendered as a 32-character lowercase hex string. `start_debugging_session`
+generates one with `secrets.token_hex(16)` when the caller passes an empty
+trace_id; callers supplying their own existing W3C `traceparent` half are
+preserved verbatim. The trace_id also forms the second half of the
+`debug_reports/<JIRA_TICKET_ID>_<OTEL_TRACE_ID>/` evidence folder (see §20),
+so every artifact for a debugging run is greppable by either id.
+
+`ticket_id` is validated against `^[A-Z][A-Z0-9]*-\d+$` at the API boundary —
+malformed inputs (empty strings, traversal-style segments) are rejected before
+they reach any filesystem path.
+
 Example:
 
 ```json
@@ -1002,7 +1027,16 @@ Reshaped 2026-05-08 to mirror Grafana's `MetricRequest` at the wire boundary
 (see `docs/log.md`): `index_hint` → `datasource_uid`, `time_window{start,end}`
 → top-level `from`/`to` (ISO 8601, epoch ms, or Grafana relative like
 `now-1h`), and the per-query slot picks up `ref_id`, `max_data_points`,
-`interval_ms`. The connector posts to `<quickwit_url>/api/ds/query`.
+`interval_ms`. The connector posts to `<quickwit_url>/api/ds/query` with the
+Grafana plugin headers (`x-plugin-id: quickwit-quickwit-datasource`,
+`x-datasource-uid: <plan.datasource_uid>`, optional `X-Grafana-Org-Id`).
+
+Filter values are Lucene-quoted automatically — the agent passes plain
+strings and the connector emits `field:"value"` so spaces/hyphens stay a
+single phrase token. The `in` op renders as `field:("a" OR "b")`, not the
+`field:IN [a b]` form from the original plan (Lucene/tantivy never parsed
+that). Sensitive refs (`matches_sensitive_ref`) are resolved inside
+`evidence_gate` only and quoted the same way.
 
 ```json
 {
@@ -1195,7 +1229,19 @@ evidence_gate/.data/
   masked_packages/
   reports/
   audit/events.jsonl
+
+debug_reports/                              # project root, gitignored
+  <JIRA_TICKET_ID>_<OTEL_TRACE_ID>/         # one folder per debugging session
+    evidence/
+      EVID-<id>.jsonl                       # one masked record per line
 ```
+
+The `debug_reports/` tree is **agent-visible**: paths come back inline in
+`create_*_evidence_request` responses as `evidence_file.path`, and the agent
+cites individual hits as `path:L<n>` (line N in the JSONL = hit N from
+`masked_data.hits[N-1]`). Contents are masked, never raw — the
+`raw_evidence_store` under `evidence_gate/.data/raw_evidence/` is still the
+only place raw connector output lives, and only evidence_gate can read it.
 
 All persistence should go through small repository classes.
 
@@ -1286,6 +1332,12 @@ Most likely root cause
 Confidence: medium/high with rationale
 Required engineer verification steps
 ```
+
+Prefer line-precise citations using the masked package's `evidence_file`:
+cite individual hits as `<evidence_file.path>:L<line_number>`, for example
+`debug_reports/BUG-123_4bf9.../evidence/EVID-abc.jsonl:L3`. Line N in the
+JSONL corresponds to hit N (1-indexed) in `masked_data.hits`, so any reader
+of the report can verify the claim by `sed -n '3p' <path>`.
 
 Do not say:
 

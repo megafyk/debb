@@ -7,10 +7,12 @@ from pathlib import Path
 from evidence_gate.config import Settings
 from evidence_gate.audit_logger import AuditLogger
 from evidence_gate.connectors.metabase_connector import MetabaseConnector
-from evidence_gate.contracts import EvidenceRequest
+from evidence_gate.contracts import EvidenceRequest, EvidenceSession
 from evidence_gate.request_services.evidence_executor import execute_metabase_request
+from evidence_gate.storage.debug_report_evidence_store import DebugReportEvidenceStore
 from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 from evidence_gate.storage.evidence_request_store import EvidenceRequestStore
+from evidence_gate.storage.evidence_session_store import EvidenceSessionStore
 from evidence_gate.storage.json_store import JsonStore
 from evidence_gate.storage.jsonl_event_store import JsonlEventStore
 from evidence_gate.storage.masked_package_store import MaskedPackageStore
@@ -41,7 +43,13 @@ def _setup(tmp_path: Path):
     request_store = EvidenceRequestStore(json_store, audit_logger)
     raw_store = RawEvidenceStore(tmp_path)
     masked_store = MaskedPackageStore(tmp_path)
-    return request_store, connector, raw_store, masked_store, audit_logger
+    dr_store = DebugReportEvidenceStore(tmp_path)
+    session_store = EvidenceSessionStore(tmp_path)
+    session_store.save(EvidenceSession(
+        evidence_session_id="ESESS-1", ticket_id="BUG-1",
+        trace_id="4bf92f3577b34da6a3ce929d0e0e4736",
+    ))
+    return request_store, connector, raw_store, masked_store, dr_store, session_store, audit_logger
 
 
 def _make_bounded_request(request_store: EvidenceRequestStore) -> EvidenceRequest:
@@ -59,13 +67,13 @@ def _make_bounded_request(request_store: EvidenceRequestStore) -> EvidenceReques
 def test_execute_metabase_full_pipeline():
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
-        request_store, connector, raw_store, masked_store, audit_logger = _setup(tmp_path)
+        request_store, connector, raw_store, masked_store, dr_store, session_store, audit_logger = _setup(tmp_path)
         req = _make_bounded_request(request_store)
 
         pkg = asyncio.run(
             execute_metabase_request(
                 req.evidence_request_id, request_store, connector,
-                raw_store, masked_store, audit_logger, "ESESS-1",
+                raw_store, masked_store, dr_store, session_store, audit_logger, "ESESS-1",
             )
         )
 
@@ -78,13 +86,13 @@ def test_execute_metabase_full_pipeline():
 def test_execute_metabase_stores_raw():
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
-        request_store, connector, raw_store, masked_store, audit_logger = _setup(tmp_path)
+        request_store, connector, raw_store, masked_store, dr_store, session_store, audit_logger = _setup(tmp_path)
         req = _make_bounded_request(request_store)
 
         asyncio.run(
             execute_metabase_request(
                 req.evidence_request_id, request_store, connector,
-                raw_store, masked_store, audit_logger, "ESESS-1",
+                raw_store, masked_store, dr_store, session_store, audit_logger, "ESESS-1",
             )
         )
 
@@ -96,13 +104,13 @@ def test_execute_metabase_stores_raw():
 def test_execute_metabase_stores_masked():
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
-        request_store, connector, raw_store, masked_store, audit_logger = _setup(tmp_path)
+        request_store, connector, raw_store, masked_store, dr_store, session_store, audit_logger = _setup(tmp_path)
         req = _make_bounded_request(request_store)
 
         pkg = asyncio.run(
             execute_metabase_request(
                 req.evidence_request_id, request_store, connector,
-                raw_store, masked_store, audit_logger, "ESESS-1",
+                raw_store, masked_store, dr_store, session_store, audit_logger, "ESESS-1",
             )
         )
 
@@ -114,7 +122,7 @@ def test_execute_metabase_stores_masked():
 def test_execute_metabase_wrong_state_raises():
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
-        request_store, connector, raw_store, masked_store, audit_logger = _setup(tmp_path)
+        request_store, connector, raw_store, masked_store, dr_store, session_store, audit_logger = _setup(tmp_path)
 
         req = EvidenceRequest(
             evidence_session_id="ESESS-1",
@@ -127,7 +135,7 @@ def test_execute_metabase_wrong_state_raises():
             asyncio.run(
                 execute_metabase_request(
                     req.evidence_request_id, request_store, connector,
-                    raw_store, masked_store, audit_logger, "ESESS-1",
+                    raw_store, masked_store, dr_store, session_store, audit_logger, "ESESS-1",
                 )
             )
             assert False, "Should have raised ValueError"
@@ -138,7 +146,7 @@ def test_execute_metabase_wrong_state_raises():
 def test_execute_metabase_transitions_to_failed_on_error():
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
-        request_store, connector, raw_store, masked_store, audit_logger = _setup(tmp_path)
+        request_store, connector, raw_store, masked_store, dr_store, session_store, audit_logger = _setup(tmp_path)
 
         req = EvidenceRequest(
             evidence_session_id="ESESS-1",
@@ -153,7 +161,7 @@ def test_execute_metabase_transitions_to_failed_on_error():
             asyncio.run(
                 execute_metabase_request(
                     req.evidence_request_id, request_store, connector,
-                    raw_store, masked_store, audit_logger, "ESESS-1",
+                    raw_store, masked_store, dr_store, session_store, audit_logger, "ESESS-1",
                 )
             )
             assert False, "Should have raised"

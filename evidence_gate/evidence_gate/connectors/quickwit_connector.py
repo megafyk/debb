@@ -12,6 +12,8 @@ from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 
 
 class QuickwitConnector:
+    _PLUGIN_ID = "quickwit-quickwit-datasource"
+
     def __init__(
         self,
         settings: Settings,
@@ -34,7 +36,11 @@ class QuickwitConnector:
         if self.is_live:
             url = f"{self._settings.quickwit_url}/api/ds/query"
             headers = quickwit_basic_auth_header(self._settings)
-            async with httpx.AsyncClient() as client:
+            headers["x-plugin-id"] = self._PLUGIN_ID
+            headers["x-datasource-uid"] = plan.datasource_uid
+            if self._settings.quickwit_org_id > 0:
+                headers["X-Grafana-Org-Id"] = str(self._settings.quickwit_org_id)
+            async with httpx.AsyncClient(timeout=30.0) as client:
                 resp = await client.post(url, json=body, headers=headers)
                 resp.raise_for_status()
                 hits = self._parse_grafana_response(resp.json(), plan.ref_id)
@@ -65,26 +71,36 @@ class QuickwitConnector:
                     evidence_session_id, f.value_ref
                 )
                 if resolved:
-                    terms.append(f"{f.field}:{resolved}")
+                    terms.append(f"{f.field}:{_lucene_literal(resolved)}")
             elif f.op == "=" and f.value is not None:
-                terms.append(f"{f.field}:{f.value}")
+                terms.append(f"{f.field}:{_lucene_literal(f.value)}")
             elif f.op == "in" and isinstance(f.value, list):
-                joined = " ".join(f.value)
-                terms.append(f"{f.field}:IN [{joined}]")
+                joined = " OR ".join(_lucene_literal(v) for v in f.value)
+                terms.append(f"{f.field}:({joined})")
             elif f.op == "contains" and f.value is not None:
-                terms.append(f"{f.field}:{f.value}")
+                terms.append(f"{f.field}:{_lucene_literal(f.value)}")
 
         query = " AND ".join(terms) if terms else "*"
 
         sub_query = {
             "refId": plan.ref_id,
-            "datasource": {"uid": plan.datasource_uid},
+            "datasource": {"type": self._PLUGIN_ID, "uid": plan.datasource_uid},
             "query": query,
-            "metric": "",
-            "format": "logs",
-            "maxDataPoints": plan.max_hits,
+            "alias": "",
+            "metrics": [
+                {
+                    "type": "logs",
+                    "id": "1",
+                    "settings": {
+                        "limit": str(plan.max_hits),
+                        "sortDirection": "desc",
+                    },
+                }
+            ],
+            "bucketAggs": [],
+            "timeField": "",
             "intervalMs": plan.interval_ms,
-            "search_fields": plan.fields_requested,
+            "maxDataPoints": plan.max_data_points,
         }
 
         return {
@@ -130,3 +146,13 @@ def _to_grafana_time(value: str) -> str:
     except (ValueError, TypeError):
         return value
     return str(int(dt.timestamp() * 1000))
+
+
+def _lucene_literal(value: object) -> str:
+    # Quote string filter values so Lucene treats them as a single phrase.
+    # Without this, values with whitespace or hyphens get split into separate
+    # terms and the query fails (Quickwit rejects e.g. `timestamp:send`).
+    if not isinstance(value, str):
+        return str(value)
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'

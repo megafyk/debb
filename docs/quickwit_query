@@ -1,0 +1,17 @@
+curl 'http://10.207.58.64:8485/api/ds/query?ds_type=quickwit-quickwit-datasource&requestId=explore_5y3' \
+  -H 'Accept-Language: en-US,en;q=0.9,vi;q=0.8,ja;q=0.7,ko;q=0.6,zh;q=0.5' \
+  -H 'Connection: keep-alive' \
+  -b 'grafana_session=230dbb091f8d05cd672781351e1a52d0; grafana_session_expiry=1778472275; sid=Fe26.2**67642c1b4be397ec1df6a4972d48cfab3a7ba0a941da812800421a0b60be995d*XMH3g_VtfppYhMofL_KCDQ*xT_CsRAd-ZYxBGwS8pJxsMT4Vvhi5vSF1j0pxAMhnmq0A1J_CinzTi90mwQK1VPXVH39r5QXlQnp00zcBigtL3fdSFfKDWNTVA3w7bNOCxc7CjuqE2XFTOQcfCM_9846_Biu_cjYZRtrWYMuuMNYzGjShQPoaPJuM1vIsP1H-nvtIum2MDoki0gr5dQr9iB-x1DQMfVrYXA74EOVljOZfIXdVr8HZgppu2kXdgoW9lNsD7eROxrUb_Ycy2ekIW6g**1a7129edff931bbc9329a8f41b5fb3dfaeeb3b49067d40f495a17715a73b5d6f*1JrrWiGHlxxEs9BNT76F4uWf-Xeo1u96P12r_yR6sX0' \
+  -H 'DNT: 1' \
+  -H 'Origin: http://10.207.58.64:8485' \
+  -H 'Referer: http://10.207.58.64:8485/explore?schemaVersion=1&panes=%7B%225y3%22:%7B%22datasource%22:%22cditnbnbvzugwb%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22datasource%22:%7B%22type%22:%22quickwit-quickwit-datasource%22,%22uid%22:%22cditnbnbvzugwb%22%7D,%22query%22:%22kubernetes.labels.app_kubernetes_io%5C%5C%2Finstance:%5C%22production-cdcn-auth-service%5C%22%22,%22alias%22:%22%22,%22metrics%22:%5B%7B%22type%22:%22logs%22,%22id%22:%223%22,%22settings%22:%7B%22limit%22:%22100%22,%22sortDirection%22:%22desc%22%7D%7D%5D,%22bucketAggs%22:%5B%7B%22type%22:%22date_histogram%22,%22id%22:%222%22,%22settings%22:%7B%22interval%22:%22auto%22%7D,%22field%22:%22%22%7D%5D,%22timeField%22:%22%22%7D%5D,%22range%22:%7B%22from%22:%22now-1h%22,%22to%22:%22now%22%7D,%22panelsState%22:%7B%22logs%22:%7B%22sortOrder%22:%22Descending%22%7D%7D,%22compact%22:false%7D%7D&orgId=2' \
+  -H 'User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36' \
+  -H 'accept: application/json, text/plain, */*' \
+  -H 'content-type: application/json' \
+  -H 'x-cache-skip: true' \
+  -H 'x-datasource-uid: cditnbnbvzugwb' \
+  -H 'x-grafana-device-id: 5844c2984c3b60549e5ee0dfcdb98836' \
+  -H 'x-grafana-org-id: 2' \
+  -H 'x-plugin-id: quickwit-quickwit-datasource' \
+  --data-raw '{"queries":[{"refId":"A","datasource":{"type":"quickwit-quickwit-datasource","uid":"cditnbnbvzugwb"},"query":"kubernetes.labels.app_kubernetes_io\\/instance:\"production-cdcn-auth-service\"","alias":"","metrics":[{"type":"logs","id":"3","settings":{"limit":"100","sortDirection":"desc"}}],"bucketAggs":[{"type":"date_histogram","id":"2","settings":{"interval":"auto"},"field":""}],"timeField":"","key":"Q-b88544c0-a70f-4df3-b4a5-fde3cead486c-0","datasourceId":59,"intervalMs":2000,"maxDataPoints":2118}],"from":"1778468358674","to":"1778471958674"}' \
+  --insecure

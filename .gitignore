@@ -16,6 +16,9 @@ uv.lock
 # evidence_gate data
 evidence_gate/.data/
 
+# debug-jira per-ticket artifacts (service maps, query plans, masked dumps, reports)
+debug_reports/
+
 # IDE
 .idea/
 .vscode/

@@ -81,12 +81,24 @@ def test_build_search_body_filters():
         assert len(body["queries"]) == 1
         sub = body["queries"][0]
         assert sub["refId"] == "A"
-        assert sub["datasource"] == {"uid": "login-service-prod"}
-        assert sub["format"] == "logs"
+        assert sub["datasource"] == {
+            "type": "quickwit-quickwit-datasource",
+            "uid": "login-service-prod",
+        }
+        assert sub["metrics"] == [
+            {
+                "type": "logs",
+                "id": "1",
+                "settings": {"limit": "100", "sortDirection": "desc"},
+            }
+        ]
+        assert sub["bucketAggs"] == []
+        assert sub["timeField"] == ""
+        assert sub["alias"] == ""
         query = sub["query"]
-        assert "error_code:ACCOUNT_LOOKUP_FAILED" in query
-        assert "level:IN [ERROR WARN]" in query
-        assert "message:timeout" in query
+        assert 'error_code:"ACCOUNT_LOOKUP_FAILED"' in query
+        assert 'level:("ERROR" OR "WARN")' in query
+        assert 'message:"timeout"' in query
         assert " AND " in query
 
 
@@ -100,6 +112,58 @@ def test_build_search_body_sensitive_ref():
         )
         body = connector._build_search_body(plan, "ESESS-1")
         assert "admin@corp.com" in body["queries"][0]["query"]
+
+
+def test_live_request_includes_org_and_plugin_headers(monkeypatch):
+    captured: dict = {}
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {"results": {"A": {"frames": []}}}
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def post(self, url, json, headers):
+            captured["url"] = url
+            captured["json"] = json
+            captured["headers"] = headers
+            return FakeResponse()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        settings = Settings(
+            quickwit_url="http://grafana.local",
+            quickwit_username="u",
+            quickwit_password="p",
+            quickwit_org_id=2,
+        )
+        sensitive_store = SensitiveValueStore(tmp_path)
+        audit_logger = AuditLogger(JsonlEventStore(tmp_path / "audit.jsonl"))
+        connector = QuickwitConnector(settings, sensitive_store, audit_logger)
+
+        import evidence_gate.connectors.quickwit_connector as qc_mod
+
+        monkeypatch.setattr(qc_mod.httpx, "AsyncClient", FakeClient)
+
+        plan = _make_plan()
+        asyncio.run(connector.execute(plan, "ESESS-1"))
+
+    assert captured["url"] == "http://grafana.local/api/ds/query"
+    assert captured["headers"]["X-Grafana-Org-Id"] == "2"
+    assert captured["headers"]["x-plugin-id"] == "quickwit-quickwit-datasource"
+    assert captured["headers"]["x-datasource-uid"] == "login-service-prod"
+    assert captured["json"]["queries"][0]["datasource"]["type"] == "quickwit-quickwit-datasource"
 
 
 def test_audit_logged_after_execute():
