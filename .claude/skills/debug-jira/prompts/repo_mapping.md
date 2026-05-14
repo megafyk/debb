@@ -4,25 +4,35 @@ Using the triage summary and sanitized ticket context, build a service_repo_map.
 
 ## Step 1 — Enumerate registered repositories
 
-The authoritative scannable-repo list is the **debug-repo registry** at
-`.claude/skills/debug-repo/registry.json`. Read it via:
+Read `.claude/skills/debug-repo/registry.json` directly — that file is the
+sole source of truth for which repos may be scanned. Equivalently, run
+`python .claude/skills/debug-repo/scripts/registry.py list --json` if you
+prefer the script-mediated path. Either way, the debug-repo registry is the
+only enumeration channel:
 
-```bash
-python .claude/skills/debug-repo/scripts/registry.py list --json
-```
+- Do **not** call the code-review-graph MCP `list_repos_tool` for
+  enumeration. The CRG registry at `~/.code-review-graph/registry.json` exists
+  to let graph MCP tools resolve a repo alias to its graph DB; it is not the
+  scannable-repo list.
+- Do **not** consult `~/.code-review-graph/registry.json` directly.
+- Do **not** invent a repo path.
 
-This returns every entry with its `name`, `description`, `path`, `tags`, and
-per-environment `connection[]` (Quickwit `id`/`uid`, Metabase `database`,
-Prometheus `job`). Treat this as the source of truth — do not scan repos that
-are not in this registry.
+Persist a verbatim copy of the registry JSON to
+`debug_reports/<TICKET_ID>_<TRACE_ID>/repos/list_repos.json` immediately — this
+is the audit trail for which repos were even considered. The Write tool with
+the literal file contents is sufficient; no template needed.
 
-If the registry is empty or missing the service the user mentions, **stop and
-ask the user to register it** via the `debug-repo` skill before proceeding.
-Do not invent a repo path.
+If the registry has no entries, or the service the user mentions is not in
+it, **stop and ask the user to register it** via the `debug-repo` skill
+before proceeding.
 
-You may additionally call the code-review-graph MCP `list_repos_tool` to
-check which entries are also parsed into the graph; prefer those for
-structural queries.
+Every entry already carries the metadata candidate selection and query
+planning need: `path`, `name`, `description`, `tags`, and per-environment
+`connection[]` with Quickwit `id`/`uid`, Metabase `database`/`tables`, and
+Prometheus `job`. Use those fields directly — no follow-up tool call is
+required to enrich them. If a required field (e.g. a Quickwit `uid` needed
+for `datasource_uid`) is missing from the entry, surface the gap to the user
+and ask — do not guess.
 
 ## Step 2 — Select candidate repos
 
@@ -31,6 +41,12 @@ service hints, stack hashes, error codes, and the registry's `tags` and
 `description` fields. Filter `connection[]` to the environment in scope (e.g.
 `production`). Record the selection reasoning per service in
 `relevance_reason`.
+
+Write the selection rationale to
+`debug_reports/<TICKET_ID>_<TRACE_ID>/repos/candidates.md` as a short bullet
+list — one line per repo (`<alias> — kept|dropped — <one-line reason>`).
+Reviewers use this file to challenge the candidate set without re-deriving it
+from the registry.
 
 ## Step 3 — Map each candidate service
 
@@ -65,6 +81,6 @@ For each selected service:
 6. If graph is not available, use Grep/Glob to find relevant code.
 7. Record: suspected code paths, functions, log fields, DB entities, SQL references.
 
-Output the service_repo_map following the schema in `schemas/service_repo_map.schema.json`.
+Output `service_repo_map.md` as markdown — one section per service — with content covering every property in `schemas/service_repo_map.schema.json` (the schema is the field checklist, not the file format).
 
 Do not include raw sensitive values. Use only secure value refs from the evidence session.

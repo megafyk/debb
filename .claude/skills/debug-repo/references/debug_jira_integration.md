@@ -21,18 +21,21 @@ out.
 
 ## Why a separate registry from code-review-graph
 
-`code-review-graph`'s `list_repos_tool` knows what's been parsed into the
-graph. The debug-repo registry adds:
+The debug-repo registry is the **sole** source of scannable repos for
+debug-jira. The CRG (code-review-graph) registry at
+`~/.code-review-graph/registry.json` exists only to let graph MCP tools
+(`semantic_search_nodes`, `query_graph`, etc.) resolve a repo alias to its
+graph DB; it is not the scannable-repo list, and debug-jira does not call
+`list_repos_tool` for enumeration.
+
+The debug-repo registry carries everything debug-jira needs that CRG does
+not:
 
 - **Per-environment connection metadata** — Quickwit indices, Metabase
   databases, Prometheus jobs. These don't belong in a code graph.
 - **Domain tags** — used by triage to narrow candidates before scanning.
 - **A short description** — gives the agent enough context to decide whether
   a repo is worth scanning at all.
-
-The two registries are complementary. debug-jira may consult both: graph for
-"is this scannable" and debug-repo for "where does it live and what data
-sources back it."
 
 ### Automatic sync and build on register / delete
 

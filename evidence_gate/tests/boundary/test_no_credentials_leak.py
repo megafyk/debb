@@ -12,6 +12,7 @@ from evidence_gate.config import Settings
 from evidence_gate.audit_logger import AuditLogger
 from evidence_gate.connectors.jira_connector import JiraConnector
 from evidence_gate.mcp_server.tools import _start_debugging_session
+from evidence_gate.storage.debug_report_evidence_store import DebugReportEvidenceStore
 from evidence_gate.storage.evidence_session_store import EvidenceSessionStore
 from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 from evidence_gate.storage.jsonl_event_store import JsonlEventStore
@@ -68,7 +69,7 @@ def test_no_credentials_in_session_response():
         jira = JiraConnector(settings)
 
         result = asyncio.run(
-            _start_debugging_session("SEC-1", "", "", session_store, sensitive_store, audit_logger, jira)
+            _start_debugging_session("SEC-1", "", "", session_store, sensitive_store, audit_logger, jira, DebugReportEvidenceStore(tmp_path))
         )
 
     response_text = result[0].text
@@ -97,7 +98,7 @@ def test_no_raw_pii_in_session_response():
         jira = JiraConnector(settings)
 
         result = asyncio.run(
-            _start_debugging_session("SEC-1", "", "", session_store, sensitive_store, audit_logger, jira)
+            _start_debugging_session("SEC-1", "", "", session_store, sensitive_store, audit_logger, jira, DebugReportEvidenceStore(tmp_path))
         )
 
     response_text = result[0].text
@@ -132,7 +133,7 @@ def test_no_credentials_in_audit_log():
         jira = JiraConnector(settings)
 
         asyncio.run(
-            _start_debugging_session("SEC-1", "", "", session_store, sensitive_store, audit_logger, jira)
+            _start_debugging_session("SEC-1", "", "", session_store, sensitive_store, audit_logger, jira, DebugReportEvidenceStore(tmp_path))
         )
 
         audit_text = audit_path.read_text()

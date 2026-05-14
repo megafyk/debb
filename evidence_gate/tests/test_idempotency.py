@@ -10,6 +10,7 @@ from evidence_gate.audit_logger import AuditLogger
 from evidence_gate.connectors.jira_connector import JiraConnector
 from evidence_gate.contracts import EvidenceSession
 from evidence_gate.mcp_server.tools import _start_debugging_session
+from evidence_gate.storage.debug_report_evidence_store import DebugReportEvidenceStore
 from evidence_gate.storage.evidence_session_store import EvidenceSessionStore
 from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 from evidence_gate.storage.jsonl_event_store import JsonlEventStore
@@ -20,7 +21,8 @@ def _make_deps(tmp_path: Path):
     sensitive_store = SensitiveValueStore(tmp_path)
     audit_logger = AuditLogger(JsonlEventStore(tmp_path / "audit.jsonl"))
     jira = JiraConnector()
-    return session_store, sensitive_store, audit_logger, jira
+    dr_store = DebugReportEvidenceStore(tmp_path)
+    return session_store, sensitive_store, audit_logger, jira, dr_store
 
 
 def test_idempotent_re_entry_returns_same_session_and_refs():

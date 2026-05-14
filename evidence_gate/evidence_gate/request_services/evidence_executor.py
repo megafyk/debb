@@ -22,6 +22,50 @@ from evidence_gate.storage.masked_package_store import MaskedPackageStore
 from evidence_gate.storage.raw_evidence_store import RawEvidenceStore
 
 
+def _build_quickwit_translation(plan: QuickwitQueryPlan) -> dict:
+    """Build step-2 translation log for a Quickwit plan.
+
+    Preserves ``value_ref`` placeholders — sensitive values are resolved
+    inside the connector at execute time and never written here.
+    """
+    return {
+        "translation_type": "quickwit_lucene",
+        "datasource_uid": plan.datasource_uid,
+        "lucene_filter_shape": [
+            f.model_dump(exclude_none=True) for f in plan.filters
+        ],
+        "fields_requested": plan.fields_requested,
+        "max_hits": plan.max_hits,
+        "time_window": {"from": plan.from_, "to": plan.to},
+    }
+
+
+def _build_metabase_translation(plan: MetabaseQueryPlan) -> dict:
+    """Build step-2 translation log for a Metabase plan.
+
+    Records the agent-supplied ``sql_candidate`` (value_ref placeholders kept
+    verbatim) plus which params came from ``value_ref`` vs literal — never the
+    resolved values.
+    """
+    param_names = [p["name"] for p in plan.params if p.get("name")]
+    refs = [p["name"] for p in plan.params if p.get("value_ref")]
+    literals = [
+        p["name"] for p in plan.params
+        if p.get("value_ref") is None and "value" in p
+    ]
+    return {
+        "translation_type": "metabase_native_query",
+        "sql_candidate": plan.sql_candidate,
+        "entity": plan.entity,
+        "database_id": plan.database_id,
+        "database_type": plan.database_type,
+        "schema": plan.schema,
+        "param_names": param_names,
+        "params_from_refs": refs,
+        "params_from_literals": literals,
+    }
+
+
 def _resolve_debug_report_folder(
     session_store: EvidenceSessionStore, evidence_session_id: str,
 ) -> str:
@@ -66,6 +110,16 @@ async def execute_quickwit_request(
         request_store.transition(request_id, "connector_running")
 
         plan = QuickwitQueryPlan.model_validate(request.plan)
+
+        # Step 2: log the redacted translation BEFORE we hit the source. The
+        # plan structure is the translation shape; value_ref placeholders are
+        # kept verbatim. Skip silently if the folder label can't be built —
+        # logging is best-effort, not gating.
+        folder_id = _resolve_debug_report_folder(session_store, evidence_session_id)
+        debug_report_evidence_store.store_translation(
+            folder_id, request_id, _build_quickwit_translation(plan),
+        )
+
         result = await quickwit_connector.execute(plan, evidence_session_id)
         raw_hits = result.hits
 
@@ -97,11 +151,21 @@ async def execute_quickwit_request(
             audit_ref=audit_event.audit_id,
             correlation_ids=correlation_ids,
         )
-        folder_id = _resolve_debug_report_folder(session_store, evidence_session_id)
         package.evidence_file = debug_report_evidence_store.store(
             folder_id, package.evidence_id, redacted,
         )
         masked_store.save(package)
+
+        # Step 3: log execution metadata now that we have the evidence_id link.
+        debug_report_evidence_store.store_execution(folder_id, request_id, {
+            "evidence_request_id": request_id,
+            "source_type": "quickwit_grafana_proxy",
+            "is_live": quickwit_connector.is_live,
+            "hit_count": len(raw_hits),
+            "is_valuable": result.is_valuable,
+            "reason": result.reason,
+            "evidence_id": package.evidence_id,
+        })
 
         request_store.transition(
             request_id,
@@ -141,6 +205,13 @@ async def execute_metabase_request(
     try:
         request_store.transition(request_id, "connector_running")
         plan = MetabaseQueryPlan.model_validate(request.plan)
+
+        # Step 2: log the redacted translation before hitting the source.
+        folder_id = _resolve_debug_report_folder(session_store, evidence_session_id)
+        debug_report_evidence_store.store_translation(
+            folder_id, request_id, _build_metabase_translation(plan),
+        )
+
         raw_rows = await metabase_connector.execute(plan, evidence_session_id)
 
         raw_store.store(request_id, raw_rows)
@@ -164,11 +235,20 @@ async def execute_metabase_request(
             diagnostic_features=features,
             audit_ref=audit_event.audit_id,
         )
-        folder_id = _resolve_debug_report_folder(session_store, evidence_session_id)
         package.evidence_file = debug_report_evidence_store.store(
             folder_id, package.evidence_id, redacted,
         )
         masked_store.save(package)
+
+        # Step 3: log execution metadata now that we have the evidence_id link.
+        debug_report_evidence_store.store_execution(folder_id, request_id, {
+            "evidence_request_id": request_id,
+            "source_type": "metabase_dataset",
+            "is_live": metabase_connector.is_live,
+            "row_count": len(raw_rows),
+            "entity": plan.entity,
+            "evidence_id": package.evidence_id,
+        })
 
         request_store.transition(
             request_id,

@@ -10,7 +10,7 @@ from mcp.types import TextContent, Tool
 from evidence_gate.config import settings
 from evidence_gate.audit_logger import AuditLogger
 from evidence_gate.connectors.jira_connector import JiraConnector
-from evidence_gate.connectors.metabase_connector import MetabaseConnector, list_templates
+from evidence_gate.connectors.metabase_connector import MetabaseConnector
 from evidence_gate.connectors.quickwit_connector import QuickwitConnector
 from evidence_gate.contracts import (
     DebugReport,
@@ -137,14 +137,6 @@ def register_tools(server: Server) -> None:
                 },
             ),
             Tool(
-                name="list_evidence_templates",
-                description="List the registered Metabase query templates that MetabaseQueryPlan can target. Returns template_id, entity, description, parameter names, and facts produced.",
-                inputSchema={
-                    "type": "object",
-                    "properties": {},
-                },
-            ),
-            Tool(
                 name="submit_debug_report",
                 description="Submit a debug report for review. The report is validated for safety (no PII/credentials), completeness (evidence citations, verification steps), and quality (confidence calibration, no overstatement). Returns review result and report ID if accepted.",
                 inputSchema={
@@ -168,6 +160,7 @@ def register_tools(server: Server) -> None:
                 sensitive_store,
                 audit_logger,
                 jira_connector,
+                debug_report_evidence_store,
             )
         elif name == "get_sanitized_jira_ticket":
             return await _get_sanitized_jira_ticket(
@@ -188,6 +181,8 @@ def register_tools(server: Server) -> None:
                 raw_store, masked_store, debug_report_evidence_store,
                 session_store, audit_logger,
             )
+
+
         elif name == "get_evidence_request_status":
             return await _get_evidence_request_status(
                 arguments["evidence_request_id"], request_store,
@@ -196,8 +191,6 @@ def register_tools(server: Server) -> None:
             return await _get_masked_evidence_package(
                 arguments["evidence_id"], masked_store,
             )
-        elif name == "list_evidence_templates":
-            return await _list_evidence_templates()
         elif name == "submit_debug_report":
             return await _submit_debug_report(
                 arguments["report"], report_store, audit_logger,
@@ -232,6 +225,7 @@ async def _start_debugging_session(
     sensitive_store: SensitiveValueStore,
     audit_logger: AuditLogger,
     jira_connector: JiraConnector,
+    debug_report_evidence_store: DebugReportEvidenceStore,
 ) -> list[TextContent]:
     ticket_id = _parse_ticket_id(ticket_id_or_url)
 
@@ -244,6 +238,10 @@ async def _start_debugging_session(
         if not existing.trace_id:
             existing.trace_id = secrets.token_hex(16)
             session_store.save(existing)
+        debug_report_evidence_store.store_jira(
+            f"{ticket_id}_{existing.trace_id}",
+            existing.sanitized_ticket.model_dump(mode="json"),
+        )
         ctx = EvidenceSessionContext(
             evidence_session_id=existing.evidence_session_id,
             ticket_id=ticket_id,
@@ -291,6 +289,10 @@ async def _start_debugging_session(
     session.audit_refs.append(ticket_audit.audit_id)
 
     session_store.save(session)
+    debug_report_evidence_store.store_jira(
+        f"{ticket_id}_{trace_id}",
+        sanitized.model_dump(mode="json"),
+    )
 
     ctx = EvidenceSessionContext(
         evidence_session_id=session.evidence_session_id,
@@ -328,12 +330,30 @@ async def _create_evidence_request(
     request_store: EvidenceRequestStore,
     validate,
     execute,
+    session_store: EvidenceSessionStore,
+    debug_report_evidence_store: DebugReportEvidenceStore,
 ) -> list[TextContent]:
     session_id = plan.get("evidence_session_id", "")
     if not session_id:
         return [TextContent(type="text", text=json.dumps({"error": "missing evidence_session_id in plan"}))]
 
     result = validate(plan, session_id, request_store)
+
+    # Step 1: persist the submitted plan under debug_reports/<folder>/plans/
+    # <EREQ>.json — for both accepted and rejected plans so the agent has a
+    # complete audit trail of replan attempts. Skip silently if the session
+    # is missing the folder-label inputs; this is best-effort traceability.
+    session = session_store.get(session_id)
+    if session and session.ticket_id and session.trace_id:
+        debug_report_evidence_store.store_plan(
+            folder_id=f"{session.ticket_id}_{session.trace_id}",
+            request_id=result.request.evidence_request_id,
+            plan=result.request.plan,
+            accepted=result.accepted,
+            rejection_reason=result.rejection_reason,
+            narrowing_applied=result.narrowing_applied,
+        )
+
     if not result.accepted:
         return [TextContent(type="text", text=json.dumps({
             "evidence_request_id": result.request.evidence_request_id,
@@ -378,6 +398,7 @@ async def _create_quickwit_evidence_request(
             audit_logger=audit_logger,
             evidence_session_id=sid,
         ),
+        session_store, debug_report_evidence_store,
     )
 
 
@@ -402,6 +423,7 @@ async def _create_metabase_evidence_request(
             audit_logger=audit_logger,
             evidence_session_id=sid,
         ),
+        session_store, debug_report_evidence_store,
     )
 
 
@@ -434,20 +456,6 @@ async def _get_evidence_request_status(
         "audit_refs": request.audit_refs,
     }
     return [TextContent(type="text", text=json.dumps(response, indent=2))]
-
-
-async def _list_evidence_templates() -> list[TextContent]:
-    templates = [
-        {
-            "template_id": t.template_id,
-            "entity": t.entity,
-            "description": t.description,
-            "param_names": t.param_names,
-            "facts_produced": t.facts_produced,
-        }
-        for t in list_templates()
-    ]
-    return [TextContent(type="text", text=json.dumps({"templates": templates}, indent=2))]
 
 
 async def _submit_debug_report(

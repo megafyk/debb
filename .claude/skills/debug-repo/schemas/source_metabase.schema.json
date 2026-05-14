@@ -3,21 +3,32 @@
   "title": "MetabaseSourceMetadata",
   "description": "Metadata identifying a Metabase database for this service in this environment.",
   "type": "object",
-  "required": ["database"],
+  "required": ["database", "database_id"],
   "additionalProperties": true,
   "properties": {
     "database": {
       "type": "string",
       "minLength": 1,
-      "description": "Metabase database name as shown in the Metabase admin UI."
+      "description": "Metabase database name as shown in the Metabase admin UI (human label)."
     },
     "database_id": {
       "type": "integer",
-      "description": "Optional Metabase numeric database ID for API calls."
+      "minimum": 1,
+      "description": "Metabase numeric database ID — sent as the `database` field in /api/dataset payloads. This is what the API actually consumes."
+    },
+    "database_type": {
+      "type": "string",
+      "enum": ["mariadb", "mysql", "postgres", "clickhouse", "oracle", "mssql"],
+      "description": "Database engine. Picks the dialect-specific pre-query recipe at docs/metabase_<database_type>_pre_query so the planner can introspect indexes/columns before writing optimized SQL."
     },
     "schema": {
       "type": "string",
-      "description": "Optional schema name when the database has multiple schemas."
+      "description": "Schema name. Used to qualify table refs as `schema.table` in SQL queries (e.g. `cdcn_log_central.log_central`)."
+    },
+    "tables": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Tables the service may query in this database/schema. Acts as an allow-list for query planners."
     }
   }
 }

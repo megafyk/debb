@@ -98,7 +98,7 @@ def test_execute_metabase_stores_raw():
 
         raw = raw_store.load(req.evidence_request_id)
         assert raw is not None
-        assert len(raw) == 1  # account fixture returns 1 row
+        assert len(raw) == 1  # fixture stub row
 
 
 def test_execute_metabase_stores_masked():

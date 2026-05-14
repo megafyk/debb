@@ -37,30 +37,12 @@ def _setup(tmp_path: Path):
     return connector, settings, sensitive_store, audit_logger
 
 
-def test_fixture_mode_account():
+def test_fixture_mode_returns_stub():
     with tempfile.TemporaryDirectory() as tmp:
         connector, _, _, _ = _setup(Path(tmp))
         plan = _make_plan()
         rows = asyncio.run(connector.execute(plan, "ESESS-1"))
-        assert len(rows) == 1
-        assert rows[0]["status"] == "active"
-
-
-def test_fixture_mode_login_attempt():
-    with tempfile.TemporaryDirectory() as tmp:
-        connector, _, _, _ = _setup(Path(tmp))
-        plan = _make_plan(
-            entity="login_attempt",
-            facts_requested=["error_distribution"],
-            params=[
-                {"name": "service", "value": "login-service"},
-                {"name": "since", "value": "2025-01-01"},
-                {"name": "until", "value": "2025-01-02"},
-            ],
-        )
-        rows = asyncio.run(connector.execute(plan, "ESESS-1"))
-        assert len(rows) == 2
-        assert rows[0]["error_code"] == "PHONE_NORMALIZATION_FAILED"
+        assert rows == [{"result": "fixture_data"}]
 
 
 def test_is_live_false_when_no_url():
@@ -79,26 +61,41 @@ def test_is_live_true_when_url_set():
         assert connector.is_live is True
 
 
-def test_no_template_raises():
+def test_live_mode_requires_sql_candidate():
     with tempfile.TemporaryDirectory() as tmp:
-        connector, _, _, _ = _setup(Path(tmp))
-        plan = _make_plan(entity="nonexistent", facts_requested=["nope"])
+        tmp_path = Path(tmp)
+        settings = Settings(metabase_enabled=True, metabase_url="http://localhost:3000",
+                            metabase_username="", metabase_password="")
+        sensitive_store = SensitiveValueStore(tmp_path)
+        audit_logger = AuditLogger(JsonlEventStore(tmp_path / "audit.jsonl"))
+        connector = MetabaseConnector(settings, sensitive_store, audit_logger)
+        plan = _make_plan()  # no sql_candidate
         try:
             asyncio.run(connector.execute(plan, "ESESS-1"))
             assert False, "Should have raised"
         except ValueError as exc:
-            assert "No registered template" in str(exc)
+            assert "sql_candidate" in str(exc).lower()
 
 
 def test_bad_params_raises():
     with tempfile.TemporaryDirectory() as tmp:
-        connector, _, _, _ = _setup(Path(tmp))
-        plan = _make_plan(params=[])  # missing required params
+        tmp_path = Path(tmp)
+        settings = Settings(metabase_enabled=True, metabase_url="http://localhost:3000",
+                            metabase_username="", metabase_password="")
+        sensitive_store = SensitiveValueStore(tmp_path)
+        audit_logger = AuditLogger(JsonlEventStore(tmp_path / "audit.jsonl"))
+        connector = MetabaseConnector(settings, sensitive_store, audit_logger)
+        plan = _make_plan(
+            sql_candidate="SELECT id FROM account WHERE phone = {{phone}}",
+            params=[{"name": "phone"}],  # neither value nor value_ref
+            database_id=1,
+        )
         try:
             asyncio.run(connector.execute(plan, "ESESS-1"))
             assert False, "Should have raised"
         except ValueError as exc:
-            assert "resolve" in str(exc).lower()
+            msg = str(exc).lower()
+            assert "value" in msg or "resolve" in msg
 
 
 def test_audit_logged_after_execute():

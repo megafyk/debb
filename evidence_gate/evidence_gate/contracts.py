@@ -117,6 +117,9 @@ class MetabaseQueryPlan(BaseModel):
     params: list[dict] = []
     facts_requested: list[str]
     output_profile: str = ""
+    database_id: int = 0
+    database_type: str = ""
+    schema: str = ""
 
 
 # ---- Evidence request -------------------------------------------------------

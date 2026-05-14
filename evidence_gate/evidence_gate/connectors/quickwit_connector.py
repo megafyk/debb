@@ -66,19 +66,20 @@ class QuickwitConnector:
     ) -> dict:
         terms: list[str] = []
         for f in plan.filters:
+            field = _lucene_field(f.field)
             if f.op == "matches_sensitive_ref" and f.value_ref:
                 resolved = self._sensitive_store.resolve(
                     evidence_session_id, f.value_ref
                 )
                 if resolved:
-                    terms.append(f"{f.field}:{_lucene_literal(resolved)}")
+                    terms.append(f"{field}:{_lucene_literal(resolved)}")
             elif f.op == "=" and f.value is not None:
-                terms.append(f"{f.field}:{_lucene_literal(f.value)}")
+                terms.append(f"{field}:{_lucene_literal(f.value)}")
             elif f.op == "in" and isinstance(f.value, list):
                 joined = " OR ".join(_lucene_literal(v) for v in f.value)
-                terms.append(f"{f.field}:({joined})")
+                terms.append(f"{field}:({joined})")
             elif f.op == "contains" and f.value is not None:
-                terms.append(f"{f.field}:{_lucene_literal(f.value)}")
+                terms.append(_lucene_contains(field, f.value))
 
         query = " AND ".join(terms) if terms else "*"
 
@@ -156,3 +157,23 @@ def _lucene_literal(value: object) -> str:
         return str(value)
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
     return f'"{escaped}"'
+
+
+def _lucene_field(name: str) -> str:
+    # Escape `/` inside Lucene field names. Without this,
+    # `kubernetes.labels.app_kubernetes_io/instance:"x"` is rejected — the
+    # slash is a reserved regex delimiter in Lucene's query parser.
+    return name.replace("/", "\\/")
+
+
+def _lucene_contains(field: str, value: object) -> str:
+    # `contains` is engineer-level "this literal appears in the field".
+    # A multi-word value as a phrase query (`field:"a b c"`) requires the
+    # tokens to appear in order and depends on positions being indexed —
+    # Quickwit rejects phrase queries on fields whose analyzer does not
+    # index positions. AND-of-tokens is the closer "contains" semantic
+    # and works on plain tokenized fields.
+    if isinstance(value, str) and len(value.split()) > 1:
+        parts = [f"{field}:{_lucene_literal(tok)}" for tok in value.split()]
+        return "(" + " AND ".join(parts) + ")"
+    return f"{field}:{_lucene_literal(value)}"

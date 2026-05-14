@@ -26,6 +26,18 @@
       }
     },
     "facts_requested": { "type": "array", "items": { "type": "string" } },
-    "output_profile": { "type": "string" }
+    "output_profile": { "type": "string" },
+    "database_id": {
+      "type": "integer",
+      "description": "Numeric Metabase database ID — sent as `database` in the /api/dataset payload. Take this from the registry entry's metabase source `database_id`."
+    },
+    "database_type": {
+      "type": "string",
+      "description": "Database engine (e.g. mariadb, postgres). Copy from the registry entry's metabase source `database_type`. The planner reads docs/metabase_<database_type>_pre_query to pick dialect-specific introspection + optimization rules."
+    },
+    "schema": {
+      "type": "string",
+      "description": "Schema name for the queried tables — substituted into template SQL `{schema}` placeholders and used to qualify table refs as `schema.table`. Take this from the registry entry's metabase source `schema`."
+    }
   }
 }

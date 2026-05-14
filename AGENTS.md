@@ -79,30 +79,42 @@ scanning cannot.
 
 ### When to use graph tools FIRST
 
-- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
-- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
-- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
-- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
-- **Architecture questions**: `get_architecture_overview` + `list_communities`
+- **Exploring code**: `semantic_search_nodes_tool` or `query_graph_tool` instead of Grep
+- **Understanding impact**: `get_impact_radius_tool` instead of manually tracing imports
+- **Code review**: `detect_changes_tool` + `get_review_context_tool` instead of reading entire files
+- **Finding relationships**: `query_graph_tool` with callers_of / callees_of / imports_of / importers_of / tests_for / file_summary / children_of / inheritors_of
+- **Architecture questions**: `get_architecture_overview_tool` + `list_communities_tool`
+- **Cross-repo lookups**: `cross_repo_search_tool` (do not use `list_repos_tool` for repo enumeration in debug-jira — that comes from `.claude/skills/debug-repo/registry.json`)
 
 Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
 
-### Key Tools
+### Key Tools (subset — full catalogue: 29 tools)
+
+Names below are the upstream tool names. From MCP they are addressed as
+`mcp__code-review-graph__<name>`. See
+`.claude/skills/debug-jira/references/code_review_graph.md` for the complete
+list and the picking guide.
 
 | Tool | Use when |
 |------|----------|
-| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
-| `get_review_context` | Need source snippets for review — token-efficient |
-| `get_impact_radius` | Understanding blast radius of a change |
-| `get_affected_flows` | Finding which execution paths are impacted |
-| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
-| `semantic_search_nodes` | Finding functions/classes by name or keyword |
-| `get_architecture_overview` | Understanding high-level codebase structure |
-| `refactor_tool` | Planning renames, finding dead code |
+| `semantic_search_nodes_tool` | Finding functions/classes/files by name or meaning — start here |
+| `query_graph_tool` | Tracing callers, callees, imports, tests, file_summary, children_of, inheritors_of |
+| `get_minimal_context_tool` | Need a ~100-token sketch of a node's neighbourhood before reading source |
+| `get_review_context_tool` | Token-efficient source snippets across changed files |
+| `get_impact_radius_tool` | Blast radius of a change |
+| `get_affected_flows_tool` | Which execution paths are impacted by a change |
+| `traverse_graph_tool` | BFS/DFS from a node with a token budget |
+| `detect_changes_tool` | Risk-scored change-impact analysis for code review |
+| `get_architecture_overview_tool` / `list_communities_tool` / `get_community_tool` | Architectural orientation |
+| `get_hub_nodes_tool` / `get_bridge_nodes_tool` | Find hotspots & chokepoints |
+| `find_large_functions_tool` | Locate oversized functions for refactoring |
+| `refactor_tool` / `apply_refactor_tool` | Plan and apply renames / dead-code removals |
+| `list_graph_stats_tool` | Verify the graph is built and fresh |
+| `cross_repo_search_tool` | Search across all CRG-registered repos |
 
 ### Workflow
 
 1. The graph auto-updates on file changes (via hooks).
-2. Use `detect_changes` for code review.
-3. Use `get_affected_flows` to understand impact.
-4. Use `query_graph` pattern="tests_for" to check coverage.
+2. Use `detect_changes_tool` for code review.
+3. Use `get_affected_flows_tool` to understand impact.
+4. Use `query_graph_tool` `pattern="tests_for"` to check coverage.

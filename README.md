@@ -28,6 +28,10 @@ AI-assisted production debugging system. An agent skill + trust-boundary service
 
 ## MCP Tools
 
+The repo's `.mcp.json` registers two stdio MCP servers:
+
+### `evidence_gate` (this repo) — 8 tools
+
 | Tool | Purpose |
 |------|---------|
 | `start_debugging_session` | Create session for a Jira ticket |
@@ -38,6 +42,34 @@ AI-assisted production debugging system. An agent skill + trust-boundary service
 | `get_masked_evidence_package` | Retrieve redacted results |
 | `list_evidence_templates` | List registered Metabase query templates |
 | `submit_debug_report` | Submit final root-cause report |
+
+### `code-review-graph` (external — github.com/tirth8205/code-review-graph) — 29 tools
+
+Used by **debug-jira** for code scanning before query planning. From MCP these
+are addressed as `mcp__code-review-graph__<name>`. Highlights:
+
+| Tool | Purpose |
+|------|---------|
+| `semantic_search_nodes_tool` | Find functions/classes/files by name or meaning |
+| `query_graph_tool` | Traverse callers, callees, imports, tests, file_summary, children, inheritors |
+| `get_minimal_context_tool` | ~100-token sketch of a node's neighbourhood |
+| `get_review_context_tool` | Token-efficient source snippets across changed files |
+| `get_impact_radius_tool` | Blast radius of a change |
+| `get_affected_flows_tool` | Execution paths impacted by a change |
+| `traverse_graph_tool` | BFS/DFS from a node with a token budget |
+| `detect_changes_tool` | Risk-scored change-impact analysis |
+| `get_architecture_overview_tool` / `list_communities_tool` | Architectural orientation |
+| `get_hub_nodes_tool` / `get_bridge_nodes_tool` | Hotspots & chokepoints |
+| `find_large_functions_tool` | Locate oversized functions |
+| `refactor_tool` / `apply_refactor_tool` | Plan and apply renames / dead-code removals |
+| `list_graph_stats_tool` | Verify the graph is built and fresh |
+| `cross_repo_search_tool` | Search across all CRG-registered repos |
+
+Full 29-tool catalogue (grouped by upstream README sections) and a picking
+guide live in
+[`.claude/skills/debug-jira/references/code_review_graph.md`](.claude/skills/debug-jira/references/code_review_graph.md).
+Repo enumeration in **debug-jira** is **not** done through `list_repos_tool` —
+the workflow reads `.claude/skills/debug-repo/registry.json` directly.
 
 ## Quick Start
 
@@ -73,6 +105,11 @@ The repo ships with a `.mcp.json` that registers both `evidence_gate` and `code-
     "evidence_gate": {
       "command": "uv",
       "args": ["run", "--package", "evidence-gate", "python", "-m", "evidence_gate.main"],
+      "type": "stdio"
+    },
+    "code-review-graph": {
+      "command": "uvx",
+      "args": ["code-review-graph", "serve"],
       "type": "stdio"
     }
   }

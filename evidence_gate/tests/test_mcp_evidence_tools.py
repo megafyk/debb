@@ -178,6 +178,109 @@ def test_create_metabase_request_with_select_star_rejected():
         assert data["accepted"] is False
 
 
+def test_accepted_quickwit_plan_is_persisted_under_plans_dir():
+    """Step 1 traceability: accepted plans land in debug_reports/<folder>/plans/."""
+    with tempfile.TemporaryDirectory() as tmp:
+        store, qw, _mb, raw, masked, dr, sess, audit = _make_deps(Path(tmp))
+        result = asyncio.run(_create_quickwit_evidence_request(
+            _valid_quickwit_plan(), store, qw, raw, masked, dr, sess, audit,
+        ))
+        data = json.loads(result[0].text)
+        assert data["accepted"] is True
+
+        folder = "BUG-1_4bf92f3577b34da6a3ce929d0e0e4736"
+        plan_file = Path(tmp) / "debug_reports" / folder / "plans" / f"{data['evidence_request_id']}.json"
+        assert plan_file.exists()
+        body = json.loads(plan_file.read_text())
+        assert body["accepted"] is True
+        assert body["plan"]["type"] == "quickwit_query_plan"
+        assert body["plan"]["service"] == "login-service"
+
+
+def test_rejected_plan_is_persisted_under_plans_dir_with_rejection_reason():
+    """Rejected plans also land in plans/ so the agent has a complete replan audit trail."""
+    with tempfile.TemporaryDirectory() as tmp:
+        store, qw, _mb, raw, masked, dr, sess, audit = _make_deps(Path(tmp))
+        plan = _valid_quickwit_plan()
+        plan["query_intent"] = "Find records for user@evil.com"  # triggers PII rejection
+        result = asyncio.run(_create_quickwit_evidence_request(
+            plan, store, qw, raw, masked, dr, sess, audit,
+        ))
+        data = json.loads(result[0].text)
+        assert data["accepted"] is False
+
+        folder = "BUG-1_4bf92f3577b34da6a3ce929d0e0e4736"
+        plan_file = Path(tmp) / "debug_reports" / folder / "plans" / f"{data['evidence_request_id']}.json"
+        assert plan_file.exists()
+        body = json.loads(plan_file.read_text())
+        assert body["accepted"] is False
+        assert "safety" in body["rejection_reason"]
+
+
+def test_accepted_quickwit_request_writes_translation_and_execution_logs():
+    """Steps 2 and 3 land in translations/ and executions/ keyed by EREQ id."""
+    with tempfile.TemporaryDirectory() as tmp:
+        store, qw, _mb, raw, masked, dr, sess, audit = _make_deps(Path(tmp))
+        result = asyncio.run(_create_quickwit_evidence_request(
+            _valid_quickwit_plan(), store, qw, raw, masked, dr, sess, audit,
+        ))
+        data = json.loads(result[0].text)
+        ereq = data["evidence_request_id"]
+        evid = data["evidence_id"]
+
+        folder = "BUG-1_4bf92f3577b34da6a3ce929d0e0e4736"
+        trans_file = Path(tmp) / "debug_reports" / folder / "translations" / f"{ereq}.json"
+        exec_file = Path(tmp) / "debug_reports" / folder / "executions" / f"{ereq}.json"
+
+        assert trans_file.exists()
+        trans = json.loads(trans_file.read_text())
+        assert trans["translation_type"] == "quickwit_lucene"
+        assert trans["datasource_uid"] == "login-service-prod"
+
+        assert exec_file.exists()
+        execution = json.loads(exec_file.read_text())
+        assert execution["evidence_id"] == evid
+        assert execution["hit_count"] == 3  # fixture returns 3
+        assert execution["source_type"] == "quickwit_grafana_proxy"
+
+
+def test_accepted_metabase_request_writes_translation_and_execution_logs():
+    """Metabase translations record the agent-supplied SQL shape; executions link the EVID."""
+    with tempfile.TemporaryDirectory() as tmp:
+        store, _qw, mb, raw, masked, dr, sess, audit = _make_deps(Path(tmp))
+        result = asyncio.run(_create_metabase_evidence_request(
+            _valid_metabase_plan(), store, mb, raw, masked, dr, sess, audit,
+        ))
+        data = json.loads(result[0].text)
+        ereq = data["evidence_request_id"]
+
+        folder = "BUG-1_4bf92f3577b34da6a3ce929d0e0e4736"
+        trans = json.loads((Path(tmp) / "debug_reports" / folder / "translations" / f"{ereq}.json").read_text())
+        assert trans["translation_type"] == "metabase_native_query"
+        assert "param_names" in trans
+
+        execution = json.loads((Path(tmp) / "debug_reports" / folder / "executions" / f"{ereq}.json").read_text())
+        assert execution["source_type"] == "metabase_dataset"
+        assert execution["evidence_id"] == data["evidence_id"]
+
+
+def test_rejected_plan_writes_no_translation_or_execution():
+    """Steps 2 and 3 only run on accepted plans."""
+    with tempfile.TemporaryDirectory() as tmp:
+        store, qw, _mb, raw, masked, dr, sess, audit = _make_deps(Path(tmp))
+        plan = _valid_quickwit_plan()
+        plan["query_intent"] = "Find records for user@evil.com"
+        result = asyncio.run(_create_quickwit_evidence_request(
+            plan, store, qw, raw, masked, dr, sess, audit,
+        ))
+        data = json.loads(result[0].text)
+        ereq = data["evidence_request_id"]
+
+        folder = "BUG-1_4bf92f3577b34da6a3ce929d0e0e4736"
+        assert not (Path(tmp) / "debug_reports" / folder / "translations" / f"{ereq}.json").exists()
+        assert not (Path(tmp) / "debug_reports" / folder / "executions" / f"{ereq}.json").exists()
+
+
 def test_metabase_masked_package_has_diagnostic_features():
     with tempfile.TemporaryDirectory() as tmp:
         store, _qw, mb, raw, masked, dr, sess, audit = _make_deps(Path(tmp))

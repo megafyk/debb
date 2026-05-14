@@ -5,6 +5,7 @@ from pathlib import Path
 from evidence_gate.audit_logger import AuditLogger
 from evidence_gate.connectors.jira_connector import JiraConnector
 from evidence_gate.mcp_server.tools import _start_debugging_session
+from evidence_gate.storage.debug_report_evidence_store import DebugReportEvidenceStore
 from evidence_gate.storage.evidence_session_store import EvidenceSessionStore
 from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 from evidence_gate.storage.jsonl_event_store import JsonlEventStore
@@ -25,9 +26,10 @@ def test_no_raw_pii_in_session_context():
         sensitive_store = SensitiveValueStore(tmp_path)
         audit_logger = AuditLogger(JsonlEventStore(tmp_path / "audit.jsonl"))
         jira = JiraConnector()
+        dr_store = DebugReportEvidenceStore(tmp_path)
 
         result = asyncio.run(
-            _start_debugging_session("BUG-123", "", "", session_store, sensitive_store, audit_logger, jira)
+            _start_debugging_session("BUG-123", "", "", session_store, sensitive_store, audit_logger, jira, dr_store)
         )
 
         response_text = result[0].text

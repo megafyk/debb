@@ -7,10 +7,10 @@ from evidence_gate.audit_logger import AuditLogger
 from evidence_gate.connectors.jira_connector import JiraConnector
 from evidence_gate.mcp_server.tools import (
     _get_sanitized_jira_ticket,
-    _list_evidence_templates,
     _parse_ticket_id,
     _start_debugging_session,
 )
+from evidence_gate.storage.debug_report_evidence_store import DebugReportEvidenceStore
 from evidence_gate.storage.evidence_session_store import EvidenceSessionStore
 from evidence_gate.storage.sensitive_value_store import SensitiveValueStore
 from evidence_gate.storage.jsonl_event_store import JsonlEventStore
@@ -21,7 +21,8 @@ def _make_deps(tmp_path: Path):
     sensitive_store = SensitiveValueStore(tmp_path)
     audit_logger = AuditLogger(JsonlEventStore(tmp_path / "audit.jsonl"))
     jira_connector = JiraConnector()
-    return session_store, sensitive_store, audit_logger, jira_connector
+    dr_store = DebugReportEvidenceStore(tmp_path)
+    return session_store, sensitive_store, audit_logger, jira_connector, dr_store
 
 
 def test_parse_ticket_id_from_url():
@@ -126,6 +127,48 @@ def test_idempotent_reentry_backfills_empty_trace_id():
         assert json.loads(again[0].text)["trace_id"] == trace_id
 
 
+def test_start_debugging_session_persists_sanitized_ticket_under_jira_subdir():
+    """The sanitized ticket must land in debug_reports/<folder>/jira/ so the
+    debug report can cite it alongside the masked evidence files."""
+    with tempfile.TemporaryDirectory() as tmp:
+        deps = _make_deps(Path(tmp))
+        result = asyncio.run(
+            _start_debugging_session("BUG-123", "trace-1", "", *deps)
+        )
+        data = json.loads(result[0].text)
+
+        out = Path(tmp) / "debug_reports" / f"BUG-123_{data['trace_id']}" / "jira" / "sanitized_ticket.json"
+        assert out.exists()
+        saved = json.loads(out.read_text())
+        assert saved["ticket_id"] == "BUG-123"
+        assert saved["summary"] == data["sanitized_ticket"]["summary"]
+
+
+def test_idempotent_reentry_refreshes_jira_snapshot_after_trace_backfill():
+    """Pre-OTel legacy sessions get a freshly-minted trace_id on re-entry; the
+    Jira snapshot must be written to the new folder so the agent can find it."""
+    from evidence_gate.contracts import EvidenceSession, SanitizedTicketContext
+
+    with tempfile.TemporaryDirectory() as tmp:
+        deps = _make_deps(Path(tmp))
+        session_store = deps[0]
+        legacy = EvidenceSession(
+            ticket_id="BUG-123", trace_id="", idempotency_key="key-1",
+            sanitized_ticket=SanitizedTicketContext(
+                ticket_id="BUG-123", summary="legacy", issue_type="bug",
+                priority="P2", status="open", description_sanitized="d",
+            ),
+        )
+        session_store.save(legacy)
+
+        result = asyncio.run(
+            _start_debugging_session("BUG-123", "", "key-1", *deps)
+        )
+        data = json.loads(result[0].text)
+        out = Path(tmp) / "debug_reports" / f"BUG-123_{data['trace_id']}" / "jira" / "sanitized_ticket.json"
+        assert out.exists()
+
+
 def test_get_sanitized_jira_ticket():
     with tempfile.TemporaryDirectory() as tmp:
         deps = _make_deps(Path(tmp))
@@ -136,7 +179,7 @@ def test_get_sanitized_jira_ticket():
         session_id = json.loads(result[0].text)["evidence_session_id"]
 
         # Then get the ticket
-        session_store, sensitive_store, _audit, jira = deps
+        session_store, sensitive_store, _audit, jira, _dr = deps
         result2 = asyncio.run(
             _get_sanitized_jira_ticket(session_id, session_store, sensitive_store, jira)
         )
@@ -162,7 +205,7 @@ def test_get_sanitized_jira_ticket_consistent_with_start():
         first_data = json.loads(first[0].text)
         session_id = first_data["evidence_session_id"]
 
-        session_store, sensitive_store, _audit, jira = deps
+        session_store, sensitive_store, _audit, jira, _dr = deps
         second = asyncio.run(
             _get_sanitized_jira_ticket(session_id, session_store, sensitive_store, jira)
         )
@@ -172,23 +215,10 @@ def test_get_sanitized_jira_ticket_consistent_with_start():
         assert "SECURE_VALUE_REF_" in second_data["description_sanitized"]
 
 
-def test_list_evidence_templates():
-    result = asyncio.run(_list_evidence_templates())
-    data = json.loads(result[0].text)
-    assert "templates" in data
-    template_ids = {t["template_id"] for t in data["templates"]}
-    assert "account_status_by_phone_hash" in template_ids
-    assert "login_attempt_counts" in template_ids
-    # No raw secrets in the listing
-    payload_text = result[0].text
-    assert "password" not in payload_text.lower()
-    assert "session" not in payload_text.lower()
-
-
 def test_get_sanitized_jira_ticket_missing_session():
     with tempfile.TemporaryDirectory() as tmp:
         deps = _make_deps(Path(tmp))
-        session_store, sensitive_store, _audit, jira = deps
+        session_store, sensitive_store, _audit, jira, _dr = deps
         result = asyncio.run(
             _get_sanitized_jira_ticket("nonexistent", session_store, sensitive_store, jira)
         )

@@ -70,6 +70,7 @@ def test_full_debugging_flow():
             _start_debugging_session(
                 "BUG-123", "", "",
                 d["session_store"], d["sensitive_store"], d["audit_logger"], d["jira"],
+                d["dr_store"],
             )
         )
         session_data = json.loads(session_result[0].text)

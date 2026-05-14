@@ -102,6 +102,34 @@ def test_build_search_body_filters():
         assert " AND " in query
 
 
+def test_build_search_body_escapes_slash_in_field_name():
+    # Field names like `kubernetes.labels.app_kubernetes_io/instance` were
+    # rejected by Quickwit because Lucene treats `/` as a reserved regex
+    # delimiter unless escaped.
+    with tempfile.TemporaryDirectory() as tmp:
+        connector, _, _, _ = _setup(Path(tmp))
+        plan = _make_plan(filters=[QueryFilter(
+            field="kubernetes.labels.app_kubernetes_io/instance",
+            op="=",
+            value="production-cdcn-auth-service",
+        )])
+        query = connector._build_search_body(plan, "ESESS-1")["queries"][0]["query"]
+        assert 'kubernetes.labels.app_kubernetes_io\\/instance:"production-cdcn-auth-service"' in query
+
+
+def test_build_search_body_contains_multiword_uses_and_of_tokens():
+    # Multi-word `contains` as a phrase query (`message:"a b c"`) fails on
+    # fields whose analyzer doesn't index positions. AND-of-tokens preserves
+    # "this literal appears in the field" semantics.
+    with tempfile.TemporaryDirectory() as tmp:
+        connector, _, _, _ = _setup(Path(tmp))
+        plan = _make_plan(filters=[QueryFilter(
+            field="message", op="contains", value="Max send otp",
+        )])
+        query = connector._build_search_body(plan, "ESESS-1")["queries"][0]["query"]
+        assert '(message:"Max" AND message:"send" AND message:"otp")' in query
+
+
 def test_build_search_body_sensitive_ref():
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
