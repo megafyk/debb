@@ -20,6 +20,23 @@ def test_redact_phone_in_logs():
     assert "555-123-4567" not in redacted[0]["details"]
 
 
+def test_redact_vn_intl_phone_in_logs():
+    # JSON-embedded Vietnamese international format (no leading `+`) leaked
+    # through TTSTK-3919 / XLSCVD-218 masked evidence. The 11-12 digit
+    # 84-prefixed shape should be redacted alongside the other phone formats.
+    raw = [{"message": '{"msisdn":"84974515324","receiver":"84983851285"}'}]
+    redacted = redact_log_hits(raw, ["message"])
+    assert "84974515324" not in redacted[0]["message"]
+    assert "84983851285" not in redacted[0]["message"]
+    assert "[REDACTED_PHONE]" in redacted[0]["message"]
+
+
+def test_redact_vn_intl_phone_in_structured_field():
+    raw = [{"contextMap.msisdn": "84974515324"}]
+    redacted = redact_log_hits(raw, ["contextMap.msisdn"])
+    assert redacted[0]["contextMap.msisdn"] == "[REDACTED_PHONE]"
+
+
 def test_field_projection():
     raw = [{"a": "1", "b": "2", "c": "3", "d": "4", "e": "5"}]
     redacted = redact_log_hits(raw, ["a", "c"])

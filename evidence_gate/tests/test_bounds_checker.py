@@ -85,3 +85,16 @@ def test_metabase_rejects_unparameterized_sql():
     result = check_metabase_bounds(plan)
     assert not result.ok
     assert "params" in result.rejection_reason
+
+
+def test_metabase_accepts_sql_with_empty_params_list():
+    # `params: []` means "this SQL has no parameters" (e.g. an introspection
+    # query against information_schema). The bounds-check should only reject
+    # when the `params` key is absent — empty list is a valid declaration.
+    plan = {
+        "sql_candidate": "SELECT * FROM information_schema.partitions WHERE table_name = 'log_central'",
+        "params": [],
+        "facts_requested": ["partition_name"],
+    }
+    result = check_metabase_bounds(plan)
+    assert result.ok

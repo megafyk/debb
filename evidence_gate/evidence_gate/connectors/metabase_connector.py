@@ -96,7 +96,7 @@ class MetabaseConnector:
                 for name, value in params.items()
             ],
         }
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
                 f"{self._settings.metabase_url}/api/dataset",
                 json=body,

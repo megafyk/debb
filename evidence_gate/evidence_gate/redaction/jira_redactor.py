@@ -14,6 +14,12 @@ _PATTERNS = [
     (re.compile(r"\+\d{6,15}\b"), "[REDACTED_PHONE]"),
     (re.compile(r"\b\d{2,4}[-.\s]\d{3,4}[-.\s]?\d{3,4}\b"), "[REDACTED_PHONE]"),
     (re.compile(r"\b0\d{9,10}\b"), "[REDACTED_PHONE]"),
+    # Vietnamese international format embedded in JSON / logs (no `+` prefix):
+    # `"msisdn":"84974515324"`. The 11-12 digit start-with-84 shape was
+    # observed leaking through Quickwit message bodies and Metabase
+    # log_central rows in TTSTK-3919 and XLSCVD-218 evidence packages.
+    # Length stays under 13 to avoid colliding with Unix-ms timestamps.
+    (re.compile(r"\b84\d{9,10}\b"), "[REDACTED_PHONE]"),
     (re.compile(r"\b\d{3}-\d{2}-\d{4}\b"), "[REDACTED_SSN]"),
     (re.compile(r"\b(?:eyJ|Bearer\s+eyJ)[A-Za-z0-9_-]+\.?[A-Za-z0-9_-]*\.?[A-Za-z0-9_-]*\b"), "[REDACTED_TOKEN]"),
     (re.compile(r"(?i)\b(?:password|passwd|secret|token|api[_-]?key)\s*[:=]\s*\S+"), "[REDACTED_CREDENTIAL]"),

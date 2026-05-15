@@ -75,10 +75,12 @@ class QuickwitConnector:
                     terms.append(f"{field}:{_lucene_literal(resolved)}")
             elif f.op == "=" and f.value is not None:
                 terms.append(f"{field}:{_lucene_literal(f.value)}")
-            elif f.op == "in" and isinstance(f.value, list):
+            elif f.op == "in" and isinstance(f.value, list) and f.value:
                 # Repeat the field name per OR clause: `(level:"A" OR level:"B")`.
                 # Quickwit's Tantivy parser rejects the grouped form
                 # `level:("A" OR "B")` with "failed to parse query".
+                # Skip the filter entirely when value=[] — emitting `()` would
+                # break the whole query.
                 parts = [f"{field}:{_lucene_literal(v)}" for v in f.value]
                 terms.append("(" + " OR ".join(parts) + ")")
             elif f.op == "contains" and f.value is not None:

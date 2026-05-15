@@ -102,6 +102,25 @@ def test_build_search_body_filters():
         assert " AND " in query
 
 
+def test_build_search_body_skips_op_in_with_empty_value_list():
+    # Defensive: `op:"in"` with an empty value list would emit the invalid
+    # Lucene fragment `()` and break the whole query. The filter should be
+    # skipped instead, leaving the other terms intact.
+    with tempfile.TemporaryDirectory() as tmp:
+        connector, _, _, _ = _setup(Path(tmp))
+        plan = _make_plan(
+            filters=[
+                QueryFilter(field="service", op="=", value="auth"),
+                QueryFilter(field="level", op="in", value=[]),
+            ]
+        )
+        body = connector._build_search_body(plan, "ESESS-1")
+        query = body["queries"][0]["query"]
+        assert 'service:"auth"' in query
+        assert "()" not in query
+        assert "level:" not in query
+
+
 def test_build_search_body_escapes_slash_in_field_name():
     # Field names like `kubernetes.labels.app_kubernetes_io/instance` were
     # rejected by Quickwit because Lucene treats `/` as a reserved regex

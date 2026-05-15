@@ -80,7 +80,10 @@ def check_metabase_bounds(plan: dict) -> BoundsResult:
     """Check Metabase query plan bounds."""
     sql = plan.get("sql_candidate", "")
 
-    if sql and not plan.get("params"):
+    # `params is None` (missing key) is the reject signal — an explicit
+    # empty list means "this SQL is fully literal (e.g. an introspection
+    # query against information_schema)" and is a valid plan shape.
+    if sql and plan.get("params") is None:
         return BoundsResult(ok=False, rejection_reason="sql_candidate requires params list")
 
     facts = plan.get("facts_requested", [])
