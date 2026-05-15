@@ -244,6 +244,44 @@ def _crg_build(*, path: str, skip: bool = False, timeout: int = 600) -> dict[str
     }
 
 
+def _crg_install(*, path: str, skip: bool = False, timeout: int = 120) -> dict[str, Any]:
+    """Run `code-review-graph install --repo <path> -y` to wire the per-repo
+    MCP config, hooks, and CLAUDE.md / AGENTS.md instruction injection.
+
+    Side effects on the target repo: writes/updates files under .claude/ and
+    may modify CLAUDE.md / AGENTS.md. The `-y` flag auto-confirms injection so
+    the subprocess does not hang waiting on a TTY.
+    """
+    if skip:
+        return {"ran": False, "skipped_reason": "--no-graph-install"}
+
+    cli = shutil.which(CRG_BIN)
+    if cli is None:
+        return {"ran": False, "skipped_reason": "code-review-graph CLI not found on PATH"}
+
+    cmd = [cli, "install", "--repo", path, "-y"]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return {
+            "ran": True,
+            "ok": False,
+            "command": " ".join(cmd),
+            "error": f"install did not finish within {timeout}s",
+        }
+    except OSError as e:
+        return {"ran": True, "ok": False, "command": " ".join(cmd), "error": str(e)}
+
+    return {
+        "ran": True,
+        "ok": proc.returncode == 0,
+        "command": " ".join(cmd),
+        "exit_code": proc.returncode,
+        "stdout": proc.stdout.strip(),
+        "stderr": proc.stderr.strip(),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
@@ -261,15 +299,24 @@ def cmd_register(args: argparse.Namespace) -> None:
 
     graph_sync = _crg_sync("register", name=entry["name"], path=entry["path"], skip=args.no_graph_sync)
 
-    # Only build if the register actually landed in CRG — otherwise the build
-    # will also fail and we'd just be returning the same error twice.
+    # Only build/install if the register actually landed in CRG — otherwise both
+    # downstream steps will fail for the same reason as the sync.
     if args.no_graph_sync or not graph_sync.get("ok"):
-        graph_build = {"ran": False, "skipped_reason": "graph_sync did not succeed; nothing to build"}
+        skipped = {"ran": False, "skipped_reason": "graph_sync did not succeed; nothing to do"}
+        graph_build = skipped
+        graph_install = skipped
     else:
         graph_build = _crg_build(path=entry["path"], skip=args.no_graph_build)
+        graph_install = _crg_install(path=entry["path"], skip=args.no_graph_install)
 
     print(json.dumps(
-        {"status": "registered", "entry": entry, "graph_sync": graph_sync, "graph_build": graph_build},
+        {
+            "status": "registered",
+            "entry": entry,
+            "graph_sync": graph_sync,
+            "graph_build": graph_build,
+            "graph_install": graph_install,
+        },
         indent=2,
     ))
 
@@ -360,8 +407,9 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_register = sub.add_parser("register", help="Append a new entry. Reads JSON from stdin.")
-    p_register.add_argument("--no-graph-sync", action="store_true", help="Skip the code-review-graph register call (also skips build).")
+    p_register.add_argument("--no-graph-sync", action="store_true", help="Skip the code-review-graph register call (also skips build and install).")
     p_register.add_argument("--no-graph-build", action="store_true", help="Run register in CRG but skip the slower full graph build.")
+    p_register.add_argument("--no-graph-install", action="store_true", help="Run register/build in CRG but skip the per-repo install (MCP config, hooks, CLAUDE.md injection).")
     p_register.set_defaults(func=cmd_register)
 
     p_list = sub.add_parser("list", help="List all entries.")

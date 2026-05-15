@@ -69,19 +69,23 @@ The script writes to `.claude/skills/debug-repo/registry.json` (atomic temp-file
 
 `register` and `delete` mirror the change into `~/.code-review-graph/registry.json`:
 
-- **register** runs `code-review-graph register <path> --alias <name>` then `code-review-graph build --repo <path>`.
+- **register** runs three CRG commands in order:
+  1. `code-review-graph register <path> --alias <name>` — add to the multi-repo registry.
+  2. `code-review-graph build --repo <path>` — seed the graph so it is immediately queryable.
+  3. `code-review-graph install --repo <path> -y` — write per-repo MCP config, Claude Code hooks, and inject graph instructions into the target repo's `CLAUDE.md` / `AGENTS.md`.
 - **delete** runs `code-review-graph unregister <name>`.
 
-The script reports both outcomes under `graph_sync` (register/unregister) and `graph_build` (register only) in its JSON response. Surface them to the user verbatim.
+The script reports outcomes under `graph_sync` (register/unregister), `graph_build` (register only), and `graph_install` (register only) in its JSON response. Surface them to the user verbatim.
 
-**Warn before `register`.** The build can take seconds to minutes on a real service repo. Tell the user it will block until the build finishes.
+**Warn before `register`.** The build can take seconds to minutes on a real service repo, and the install step writes/modifies files inside the target repo (`CLAUDE.md`, `AGENTS.md`, `.claude/...`). Tell the user both before proceeding.
 
-**Best-effort, no rollback.** If `graph_sync` or `graph_build` fails, the local registry mutation still succeeds. Common `graph_sync` failures: path is not a git repo (suggest `git init` or fix the path); CRG CLI missing (`pip install code-review-graph` or use `--no-graph-sync`); already-registered/not-found drift (usually safe to mention and ignore). `graph_build` failures leave both registries intact — the user can retry `code-review-graph build --repo <path>` later.
+**Best-effort, no rollback.** If `graph_sync`, `graph_build`, or `graph_install` fails, the local registry mutation still succeeds. Common `graph_sync` failures: path is not a git repo (suggest `git init` or fix the path); CRG CLI missing (`pip install code-review-graph` or use `--no-graph-sync`); already-registered/not-found drift (usually safe to mention and ignore). `graph_build` failures leave both registries intact — the user can retry `code-review-graph build --repo <path>` later. `graph_install` failures leave the repo registered but un-installed — the user can retry `code-review-graph install --repo <path> -y` later.
 
 **Opt-out flags:**
 
-- `--no-graph-sync` — skip CRG sync and build entirely (local-only or non-git path).
-- `--no-graph-build` — register in CRG but skip the build (defer to a quieter moment). `register` only.
+- `--no-graph-sync` — skip CRG sync, build, and install entirely (local-only or non-git path).
+- `--no-graph-build` — register/install in CRG but skip the slower full build (defer to a quieter moment). `register` only.
+- `--no-graph-install` — register/build in CRG but skip the per-repo install (when MCP config / hook / CLAUDE.md changes in the target repo are not wanted). `register` only.
 
 `update` does not touch CRG — CRG only stores `{path, alias}`, and `update` doesn't rename.
 

@@ -11,3 +11,4 @@ evidence_gate/.data/
 *.lock
 uv.lock
 .debug/
+.debug_reports/

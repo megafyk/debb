@@ -97,7 +97,7 @@ def test_build_search_body_filters():
         assert sub["alias"] == ""
         query = sub["query"]
         assert 'error_code:"ACCOUNT_LOOKUP_FAILED"' in query
-        assert 'level:("ERROR" OR "WARN")' in query
+        assert '(level:"ERROR" OR level:"WARN")' in query
         assert 'message:"timeout"' in query
         assert " AND " in query
 
