@@ -1,4 +1,18 @@
 {
+  "permissions": {
+    "allow": [
+      "Skill(incremental-implementation)",
+      "Write",
+      "Edit",
+      "Bash(uv --version)",
+      "Bash(uv python *)",
+      "Bash(uv sync *)",
+      "Bash(uv run *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(wc *)"
+    ]
+  },
   "hooks": {
     "PostToolUse": [
       {
@@ -6,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "code-review-graph update --skip-flows",
+            "command": "git rev-parse --git-dir >/dev/null 2>&1 && code-review-graph update --skip-flows --repo \"/home/myadmin/tools/projects/debb\" || true",
             "timeout": 30
           }
         ]
@@ -18,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "code-review-graph status",
+            "command": "git rev-parse --git-dir >/dev/null 2>&1 && code-review-graph status --repo \"/home/myadmin/tools/projects/debb\" || echo 'Not a git repo, skipping'",
             "timeout": 10
           }
         ]
