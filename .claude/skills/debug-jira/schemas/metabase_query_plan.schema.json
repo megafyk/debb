@@ -37,7 +37,8 @@
     },
     "schema": {
       "type": "string",
-      "description": "Schema name for the queried tables — substituted into template SQL `{schema}` placeholders and used to qualify table refs as `schema.table`. Take this from the registry entry's metabase source `schema`."
+      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+      "description": "Schema name for the queried tables — substituted into the `sql_candidate` `{schema}` placeholder and used to qualify table refs as `schema.table`. Must be a bare SQL identifier (letters/digits/underscore); evidence_gate rejects anything else before execution. Take this from the registry entry's metabase source `schema`."
     }
   }
 }

@@ -10,7 +10,8 @@ this skill writes) before doing any code scan. For each candidate service the
 triage step picks, the repo-mapping step:
 
 1. Looks up the entry by `name` in the registry.
-2. Uses `path` as the working directory for code-review-graph and Grep/Read.
+2. Uses `path` as the working directory for Grep/Read, and as a file-path filter
+   when querying the combined code-review-graph (which spans every repo).
 3. Filters `connection[]` to the environment in scope (e.g. `production`).
 4. Pulls Quickwit `id`/`uid` for log query plans, Metabase `database` for SQL
    query plans, and Prometheus `job` for metrics correlation.
@@ -23,10 +24,11 @@ out.
 
 The debug-repo registry is the **sole** source of scannable repos for
 debug-jira. The CRG (code-review-graph) registry at
-`~/.code-review-graph/registry.json` exists only to let graph MCP tools
-(`semantic_search_nodes`, `query_graph`, etc.) resolve a repo alias to its
-graph DB; it is not the scannable-repo list, and debug-jira does not call
-`list_repos_tool` for enumeration.
+`~/.code-review-graph/registry.json` holds a single entry for the workspace root
+(alias e.g. `vds`) that points the graph MCP tools (`semantic_search_nodes`,
+`query_graph`, etc.) at the one combined graph DB covering every service; it is
+not the scannable-repo list, and debug-jira does not call `list_repos_tool` for
+enumeration.
 
 The debug-repo registry carries everything debug-jira needs that CRG does
 not:
@@ -37,30 +39,36 @@ not:
 - **A short description** — gives the agent enough context to decide whether
   a repo is worth scanning at all.
 
-### Automatic sync and build on register / delete
+### Building the combined workspace graph
 
-Since the two registries describe overlapping populations of repos, the
-debug-repo skill now mirrors `register` and `delete` into CRG automatically,
-and on register also parses the repo into the graph:
+The code-review-graph is a single combined graph at the **workspace root** (the
+common parent of all registered repos, e.g. `.../vds`), not a graph per repo.
+Registry mutations are decoupled from the graph:
 
-- `register` → `code-review-graph register <path> --alias <name>`, then `code-review-graph build --repo <path>` so the new repo is queryable from debug-jira immediately.
-- `delete`  → `code-review-graph unregister <name>`.
+- `register` / `update` / `delete` → **local-only**; they mutate `registry.json`
+  and never touch CRG.
+- `setup-graph` → `install --repo <root> --platform claude-code -y` (MCP config,
+  hooks, CLAUDE.md injection at the root), then `build --repo <root>` (the
+  combined graph over the whole tree), then `register <root> --alias <root-name>`
+  (register last — CRG rejects a path with no `.git`/`.code-review-graph`, which
+  `build` creates). Run after adding/removing repos.
+- `migrate-graph --confirm` → one-time: unregister the old per-repo CRG aliases,
+  delete each repo's `.code-review-graph/` dir, then `setup-graph`.
 
-The mapping is `debug-repo.name` ↔ `code-review-graph.alias` and
-`debug-repo.path` ↔ `code-review-graph.path`. CRG only stores those two
-fields, so updates to tags / connections / description never trigger a CRG
-write or rebuild.
+The combined graph spans every repo under the root, so a single MCP query
+(`semantic_search_nodes`, `query_graph`, …) searches the whole workspace; scope
+to one service by filtering on its `path` prefix.
 
-Both the sync and build are **best-effort, no rollback**. If CRG sync
-fails (CLI not installed, non-git path, alias collision), the local
-registry mutation still succeeds, the build is skipped, and the skill
-surfaces the CRG error to the user. If sync succeeds but build fails
-(parse error, timeout), the user can re-run `code-review-graph build
---repo <path>` manually. Drift is recoverable on both sides.
+Every CRG step is **best-effort, no rollback** and reported independently in the
+script's JSON. The workspace root need not be a git repo — `build`/`install`
+walk the filesystem. A full-workspace build can take minutes; raise `--timeout`
+(default 1800s) or rerun `setup-graph` if it times out.
 
-Flags:
-- `--no-graph-sync` — skip the CRG register/unregister entirely (also skips build).
-- `--no-graph-build` — register in CRG but skip the slower full-graph build.
+Flags (`setup-graph` and `migrate-graph`):
+- `--alias <name>` — override the workspace-root alias (default: root dir name).
+- `--no-install` — skip the `install` step.
+- `--no-build` — skip the heavy full build (rerun `setup-graph` later).
+- `--timeout <seconds>` — build timeout (default: 1800).
 
 ## Per-developer caveat
 

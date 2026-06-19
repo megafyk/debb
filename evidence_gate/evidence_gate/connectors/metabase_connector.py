@@ -26,6 +26,15 @@ class MetabaseConnector:
         self._settings = settings
         self._sensitive_store = sensitive_store
         self._audit = audit_logger
+        # Metabase session tokens are valid for days; cache and reuse across
+        # queries so a burst of evidence requests doesn't trigger per-username
+        # login throttling on /api/session. Refreshed on a 401.
+        self._session_header: dict[str, str] | None = None
+
+    async def _get_session_header(self) -> dict[str, str]:
+        if self._session_header is None:
+            self._session_header = await metabase_session_header(self._settings)
+        return self._session_header
 
     @property
     def is_live(self) -> bool:
@@ -77,7 +86,6 @@ class MetabaseConnector:
     async def _execute_live(
         self, plan: MetabaseQueryPlan, params: dict[str, str]
     ) -> list[dict]:
-        headers = await metabase_session_header(self._settings)
         sql = plan.sql_candidate
         if plan.schema:
             sql = sql.replace("{schema}", plan.schema)
@@ -96,14 +104,24 @@ class MetabaseConnector:
                 for name, value in params.items()
             ],
         }
+        url = f"{self._settings.metabase_url}/api/dataset"
         async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(
-                f"{self._settings.metabase_url}/api/dataset",
-                json=body,
-                headers=headers,
-            )
+            headers = await self._get_session_header()
+            resp = await client.post(url, json=body, headers=headers)
+            if resp.status_code == 401:
+                # Session expired/revoked — re-login once and retry.
+                self._session_header = None
+                headers = await self._get_session_header()
+                resp = await client.post(url, json=body, headers=headers)
             resp.raise_for_status()
             data = resp.json()
+
+        # Metabase returns 2xx even when the query itself fails (syntax error,
+        # missing table, permission denied), signalling failure only in the
+        # body. Without this check a failed query looks like a successful empty
+        # result and the agent reads a false "no matching records" signal.
+        if data.get("error") or data.get("status") == "failed":
+            raise RuntimeError(f"Metabase query failed: {data.get('error', 'unknown error')}")
 
         cols = [c["name"] for c in data.get("data", {}).get("cols", [])]
         rows_raw = data.get("data", {}).get("rows", [])

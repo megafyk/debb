@@ -86,7 +86,17 @@ class QuickwitConnector:
             elif f.op == "contains" and f.value is not None:
                 terms.append(_lucene_contains(field, f.value))
 
-        query = " AND ".join(terms) if terms else "*"
+        # The bounds checker guarantees >=1 plan filter, but a filter can be
+        # dropped above (unresolved sensitive ref, empty `in` list, null value).
+        # If every filter drops, refuse rather than falling back to `*` — a
+        # match-all would silently void the "filter required" bound and pull
+        # arbitrary production logs within the window.
+        if not terms:
+            raise ValueError(
+                "no executable filter terms: all plan filters were empty or "
+                "resolved to nothing"
+            )
+        query = " AND ".join(terms)
 
         sub_query = {
             "refId": plan.ref_id,

@@ -37,7 +37,13 @@ def redact_value(value: object) -> object:
     if isinstance(value, str):
         return redact_text(value)
     if isinstance(value, dict):
-        return {k: redact_value(v) for k, v in value.items()}
+        # Redact string keys too: log/DB payloads sometimes key a nested object
+        # by the PII itself (e.g. a per-MSISDN or per-email map), and an
+        # unredacted key would flow into the masked package verbatim.
+        return {
+            (redact_text(k) if isinstance(k, str) else k): redact_value(v)
+            for k, v in value.items()
+        }
     if isinstance(value, list):
         return [redact_value(item) for item in value]
     return value

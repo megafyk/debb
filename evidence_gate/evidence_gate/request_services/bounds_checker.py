@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 
 MAX_TIME_WINDOW_HOURS = 24
 MAX_HITS_LIMIT = 500
+# Metabase plans carry no per-query row limit (unlike Quickwit's max_hits), so
+# cap the rows that reach redaction/the agent at the same volume bound. The
+# executor truncates to this and records the narrowing.
+MAX_METABASE_ROWS = 500
 
 
 @dataclass
@@ -71,9 +75,13 @@ def _parse_iso(value: object) -> datetime | None:
     if not isinstance(value, str):
         return None
     try:
-        return datetime.fromisoformat(value)
+        dt = datetime.fromisoformat(value)
     except ValueError:
         return None
+    # Treat naive timestamps as UTC so a mixed naive/aware from/to pair (both
+    # parse as ISO, so the same-format guard doesn't fire) compares cleanly
+    # instead of raising "can't compare offset-naive and offset-aware".
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
 
 
 def check_metabase_bounds(plan: dict) -> BoundsResult:

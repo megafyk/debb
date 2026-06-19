@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from uuid import uuid4
 
@@ -11,6 +12,10 @@ class SensitiveValueStore:
     def __init__(self, data_dir: Path) -> None:
         self._dir = data_dir / "sensitive_values"
         self._dir.mkdir(parents=True, exist_ok=True)
+        # Holds raw PII at rest — keep it owner-only so co-located users or
+        # processes on a shared host can't read what the trust boundary exists
+        # to protect.
+        os.chmod(self._dir, 0o700)
 
     def store(self, session_id: str, field_type: str, raw_value: str) -> str:
         value_ref = f"SECURE_VALUE_REF_{field_type}_{uuid4().hex[:6]}"
@@ -20,6 +25,7 @@ class SensitiveValueStore:
             data = json.loads(path.read_text())
         data[value_ref] = {"field_type": field_type, "raw_value": raw_value}
         path.write_text(json.dumps(data, indent=2))
+        os.chmod(path, 0o600)
         return value_ref
 
     def resolve(self, session_id: str, value_ref: str) -> str | None:

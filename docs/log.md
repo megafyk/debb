@@ -17,11 +17,96 @@ Tracks changes and implementation progress for the AI-assisted production debugg
 | M7 | Metabase templates | ✅ Done |
 | M8 | Reports and evals | ✅ Done |
 
-**198 tests passing** (28 boundary tests) • **8 MCP tools** • **65 Python files** (34 source + 31 tests)
+**255 tests passing** (28 boundary tests) • **7 MCP tools** • Metabase runs gated arbitrary SQL (no template registry)
 
 ---
 
 ## Changelog
+
+### 2026-06-19
+
+#### debug-repo: one combined code-review-graph per workspace (supersedes per-repo graphs)
+**Context:** The debug-repo skill built a code-review-graph per registered repo:
+each `register` ran `code-review-graph register/build/install --repo <path>`,
+producing a `.code-review-graph/` DB *inside every service repo* and one CRG
+multi-repo alias per repo (82 of them). The VDS services all live under one
+workspace folder (`.../vds`, a Maven/IntelliJ aggregator over 125 repos), so the
+per-repo model meant 82+ separate graph DBs and aliases for what is logically a
+single workspace, and a full `build` ran on every single-repo `register`.
+
+**Decision:** Build **one combined graph at the workspace root** (the common
+parent of all registered repos) and decouple graph builds from registry writes:
+- **register/update/delete are local-only** — they mutate `registry.json` and
+  never call CRG. `register` no longer runs build/install; the per-repo
+  `--no-graph-*` flags are removed.
+- **New `setup-graph`** runs, at the workspace root: `install --repo <root>
+  --platform claude-code -y`, `build --repo <root>`, then `register <root>
+  --alias <root-name>` (register **last** — CRG rejects a path with no
+  `.git`/`.code-review-graph`, which `build` creates). The root need not be a
+  git repo (build/install walk the filesystem). Default build `--timeout` is 1800s.
+- **New `migrate-graph --confirm`** is the one-time cutover: unregister every
+  per-repo CRG alias under the root, delete each repo's stale
+  `.code-review-graph/` dir, then `setup-graph`.
+- The workspace root is derived as the single common parent of registered repo
+  paths; mixed parents are rejected (`ambiguous_workspace_root`).
+
+**Consequences:**
+- Graph MCP tools resolve the whole workspace from one alias/DB; a single query
+  spans all services — scope to one service by filtering on its `path` prefix.
+- debug-jira's scan-time freshness contract now refreshes the combined graph at
+  the root (`update --repo <root>`, `build` fallback), not per repo. The
+  consumer-side debug-jira skill may need a matching follow-up.
+- Adding/removing a repo no longer refreshes the graph automatically; run
+  `setup-graph` to fold the change in.
+- Repos outside the workspace root (e.g. this tool's own `debb` repo) keep their
+  own per-repo graph and are left untouched by `migrate-graph`.
+
+### 2026-06-11
+
+#### Trust-boundary hardening audit (supersedes M7 Metabase template model)
+**Context:** A full architecture/logic/security audit found that several gate
+checks validated a *different representation* than what actually executed, and
+that the at-rest layer didn't enforce the "raw data never leaks" premise. The
+M7 ADR entry below still describes Metabase as *template-only execution (no
+arbitrary SQL)* with a `TemplateRegistry` and an 8th `list_evidence_templates`
+MCP tool — none of which exist anymore. The Metabase connector now executes the
+agent's `sql_candidate` directly, gated only by `content_safety_checker`'s
+regex denylist (7 MCP tools total).
+
+**Decision:** Record the template→gated-SQL switch as the current architecture,
+and close the validation-vs-execution gaps the switch opened:
+- **Gate scans what executes.** `check_plan_safety` now validates `schema` is a
+  bare SQL identifier and re-runs the SQL denylist against the
+  `{schema}`-substituted SQL, not just the pre-substitution `sql_candidate`
+  (previously an agent could route `UNION SELECT`/`DROP` through `schema`).
+- **Quickwit filter field names** are restricted to an identifier shape in
+  `schema_checker` so a crafted `field` can't inject top-level Lucene and widen
+  the query past the validated filters.
+- **Leakage patterns** in `redaction/leakage.py` (used by both plan-safety and
+  report-review) are brought back in sync with the redactor: VN MSISDN forms
+  (`84…`, `0…`) and `token:` assignments are no longer accepted.
+- **Connector trust boundary:** Metabase query failures (2xx body with
+  `status:"failed"`) now raise instead of being reported as an empty success;
+  the Metabase session token is cached and refreshed on 401; the blocking Jira
+  fetch runs off the event loop.
+- **At-rest:** `SensitiveValueStore`/`RawEvidenceStore` create dirs `0700` and
+  files `0600`; `redact_value` redacts dict keys (PII used as a map key);
+  caller-supplied `trace_id` is validated before it becomes a folder name
+  (path-traversal fix).
+- **Bounds:** mixed naive/aware `from`/`to` no longer crash the bounds check
+  (naive treated as UTC); Metabase results are capped to `MAX_METABASE_ROWS`
+  (mirroring Quickwit's `max_hits`), recorded as a truncation in the execution
+  log; Quickwit refuses to fall back to a match-all `*` when every filter
+  resolves to nothing.
+
+**Consequences:**
+- 255 tests passing (added `test_audit_fixes.py`, 24 regression tests).
+- `debugging_system_implementation_plan.md` §10's `list_evidence_templates` /
+  `TemplateRegistry` design is superseded by this entry; the live system has 7
+  MCP tools and no template registry.
+- The regex SQL denylist remains a weaker control than an allowlist of approved
+  templates; it is now at least applied to the executed SQL. A future ADR could
+  reintroduce a template/allowlist model if arbitrary SQL proves too permissive.
 
 ### 2026-05-08
 

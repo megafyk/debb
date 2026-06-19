@@ -4,7 +4,7 @@
 
 1. Never call Jira, Quickwit, Metabase, production databases, or raw evidence stores directly.
 2. Never reveal, reconstruct, guess, or ask for raw sensitive values.
-3. Never execute arbitrary SQL.
+3. Never run SQL directly against a database. Author it as a Metabase plan `sql_candidate` and let evidence_gate gate (safety denylist + bounds) and execute it.
 4. Never patch, merge, deploy, rollback, or mutate production systems.
 5. Never include raw sensitive values in reports, service maps, or query plans.
 

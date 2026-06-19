@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 import re
 import secrets
+from functools import partial
+
+import anyio.to_thread
 
 from mcp.server import Server
 from mcp.types import TextContent, Tool
@@ -200,6 +203,11 @@ def register_tools(server: Server) -> None:
 
 
 _TICKET_ID_RE = re.compile(r"^[A-Z][A-Z0-9]*-\d+$")
+# Caller-supplied trace_id flows into the debug_reports/<TICKET_ID>_<trace_id>
+# folder name (joined into filesystem paths), so it must not contain path
+# separators or `..`. W3C/OTel trace ids are hex; allow that plus the
+# `-`/`_` forms callers use for existing correlation ids.
+_TRACE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 def _parse_ticket_id(ticket_id_or_url: str) -> str:
@@ -228,6 +236,8 @@ async def _start_debugging_session(
     debug_report_evidence_store: DebugReportEvidenceStore,
 ) -> list[TextContent]:
     ticket_id = _parse_ticket_id(ticket_id_or_url)
+    if trace_id and not _TRACE_ID_RE.match(trace_id):
+        raise ValueError(f"Invalid trace_id: {trace_id!r}")
 
     existing = session_store.find_idempotent(ticket_id, idempotency_key)
     if existing and existing.sanitized_ticket is not None:
@@ -267,8 +277,13 @@ async def _start_debugging_session(
         idempotency_key=idempotency_key,
     )
 
-    sanitized, sensitive_refs = jira_connector.fetch_and_sanitize(
-        ticket_id, session.evidence_session_id, sensitive_store,
+    # fetch_and_sanitize does a blocking httpx.get; run it off the event loop
+    # so a slow/unreachable Jira doesn't freeze the whole MCP server.
+    sanitized, sensitive_refs = await anyio.to_thread.run_sync(
+        partial(
+            jira_connector.fetch_and_sanitize,
+            ticket_id, session.evidence_session_id, sensitive_store,
+        )
     )
     session.sensitive_refs = sensitive_refs
     session.sanitized_ticket = sanitized
@@ -319,8 +334,11 @@ async def _get_sanitized_jira_ticket(
     if session.sanitized_ticket is not None:
         return [TextContent(type="text", text=session.sanitized_ticket.model_dump_json(indent=2))]
 
-    sanitized, _ = jira_connector.fetch_and_sanitize(
-        session.ticket_id, evidence_session_id, sensitive_store,
+    sanitized, _ = await anyio.to_thread.run_sync(
+        partial(
+            jira_connector.fetch_and_sanitize,
+            session.ticket_id, evidence_session_id, sensitive_store,
+        )
     )
     return [TextContent(type="text", text=sanitized.model_dump_json(indent=2))]
 

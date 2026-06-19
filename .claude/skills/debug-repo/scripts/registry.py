@@ -10,6 +10,16 @@ Commands:
   show <name> [--json]  Print one entry.
   update <name>         Read a partial-or-full entry as JSON on stdin and merge it.
   delete <name> --confirm   Remove an entry. --confirm is required.
+  setup-graph           Build the single combined code-review-graph at the
+                        workspace root (the common parent of all registered
+                        repos, e.g. .../vds): register the root alias, install
+                        (--platform claude-code), and build.
+  migrate-graph --confirm   One-time migration off the old per-repo model:
+                        unregister per-repo graph aliases, delete each repo's
+                        .code-review-graph/ dir, then build the combined graph.
+
+register/delete are local-only — they mutate registry.json and never touch the
+code-review-graph. The combined graph is (re)built explicitly via setup-graph.
 
 Errors are printed as JSON on stderr and the script exits non-zero. The skill
 relays those errors verbatim to the user.
@@ -152,19 +162,21 @@ def _read_json_stdin() -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# code-review-graph sync
+# code-review-graph (combined workspace graph)
 # ---------------------------------------------------------------------------
-# The debug-repo registry mirrors a subset of itself into the code-review-graph
-# multi-repo registry at ~/.code-review-graph/registry.json. CRG only stores
-# {path, alias} per repo; we map debug-repo's `name` → CRG's `alias`.
+# All registered repos live under one workspace root (e.g. .../vds). Instead of
+# a graph per repo, the skill builds ONE combined graph at that root, registered
+# in the CRG multi-repo registry under a single alias (the root directory name).
 #
-# Sync is best-effort: a failure here logs a warning into the JSON response
-# but does NOT roll back the local mutation. The two registries can drift
-# (e.g. user added a repo to CRG manually) and that's recoverable; rolling
-# back the local op on a CRG hiccup would surprise the user more than it
-# helps.
+# register/delete are local-only — they mutate registry.json and never touch the
+# graph. The combined graph is (re)built explicitly via `setup-graph`, and the
+# old per-repo graphs are cleaned up once via `migrate-graph`.
+#
+# Every CRG call is best-effort: a failure is reported in the JSON response but
+# never rolls back the local registry mutation.
 
 CRG_BIN = "code-review-graph"
+CRG_REGISTRY_PATH = Path.home() / ".code-review-graph" / "registry.json"
 
 
 def _crg_sync(action: str, *, name: str, path: str | None = None, skip: bool = False) -> dict[str, Any]:
@@ -210,12 +222,12 @@ def _crg_sync(action: str, *, name: str, path: str | None = None, skip: bool = F
 def _crg_build(*, path: str, skip: bool = False, timeout: int = 600) -> dict[str, Any]:
     """Run `code-review-graph build --repo <path>` to parse the repo into the graph.
 
-    Called after a successful register so a freshly registered repo has a graph
-    ready to query. Slow (seconds to minutes depending on repo size); the
-    skill's SKILL.md tells the agent to warn the user before triggering.
+    Builds the single combined graph over the whole workspace tree. Slow
+    (minutes for a large workspace); the skill's SKILL.md tells the agent to
+    warn the user before triggering.
     """
     if skip:
-        return {"ran": False, "skipped_reason": "--no-graph-build"}
+        return {"ran": False, "skipped_reason": "--no-build"}
 
     cli = shutil.which(CRG_BIN)
     if cli is None:
@@ -245,21 +257,22 @@ def _crg_build(*, path: str, skip: bool = False, timeout: int = 600) -> dict[str
 
 
 def _crg_install(*, path: str, skip: bool = False, timeout: int = 120) -> dict[str, Any]:
-    """Run `code-review-graph install --repo <path> -y` to wire the per-repo
-    MCP config, hooks, and CLAUDE.md / AGENTS.md instruction injection.
+    """Run `code-review-graph install --repo <path> --platform claude-code -y`
+    to wire the MCP config, hooks, and CLAUDE.md instruction injection at the
+    workspace root.
 
-    Side effects on the target repo: writes/updates files under .claude/ and
-    may modify CLAUDE.md / AGENTS.md. The `-y` flag auto-confirms injection so
-    the subprocess does not hang waiting on a TTY.
+    Side effects on the root: writes .mcp.json, may create/modify CLAUDE.md, and
+    ensures .gitignore ignores .code-review-graph/. The `-y` flag auto-confirms
+    injection so the subprocess does not hang waiting on a TTY.
     """
     if skip:
-        return {"ran": False, "skipped_reason": "--no-graph-install"}
+        return {"ran": False, "skipped_reason": "--no-install"}
 
     cli = shutil.which(CRG_BIN)
     if cli is None:
         return {"ran": False, "skipped_reason": "code-review-graph CLI not found on PATH"}
 
-    cmd = [cli, "install", "--repo", path, "-y"]
+    cmd = [cli, "install", "--repo", path, "--platform", "claude-code", "-y"]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -283,6 +296,86 @@ def _crg_install(*, path: str, skip: bool = False, timeout: int = 120) -> dict[s
 
 
 # ---------------------------------------------------------------------------
+# Combined-graph orchestration
+# ---------------------------------------------------------------------------
+
+
+def _workspace_root(data: dict[str, Any]) -> Path:
+    """Common parent of every registered repo — the workspace root the combined
+    graph is built at (e.g. .../vds). All repos are expected to live directly
+    under one folder; if they don't, we can't pick a single root."""
+    paths = [Path(r["path"]).resolve() for r in data.get("repos", []) if r.get("path")]
+    if not paths:
+        _die("no_repos", "Registry is empty — register a repo before building the combined graph.")
+    parents = {p.parent for p in paths}
+    if len(parents) != 1:
+        listed = ", ".join(sorted(str(p) for p in parents))
+        _die(
+            "ambiguous_workspace_root",
+            f"Registered repos span multiple parent directories ({listed}); the combined "
+            "graph needs a single workspace root. Keep all repos under one folder.",
+        )
+    return parents.pop()
+
+
+def _setup_combined_graph(root: Path, *, alias: str, do_install: bool, do_build: bool, build_timeout: int) -> dict[str, Any]:
+    """Install the MCP wiring, build the single combined graph, then register the
+    workspace root under one alias. Each step is best-effort and reported.
+
+    Order matters: CRG's `register` rejects a path with no .git / .code-review-graph,
+    and `build` is what creates .code-review-graph — so register must run last.
+    """
+    root_str = str(root)
+    graph_install = _crg_install(path=root_str, skip=not do_install)
+    graph_build = _crg_build(path=root_str, skip=not do_build, timeout=build_timeout)
+    graph_register = _crg_sync("register", name=alias, path=root_str)
+    return {
+        "workspace_root": root_str,
+        "alias": alias,
+        "graph_install": graph_install,
+        "graph_build": graph_build,
+        "graph_register": graph_register,
+    }
+
+
+def _crg_unregister_under_root(root: Path) -> list[dict[str, Any]]:
+    """Unregister every per-repo CRG alias whose path is nested under the
+    workspace root (the leftovers from the old per-repo model). The root's own
+    combined entry, and repos outside the root (e.g. this tool's own repo), are
+    left untouched."""
+    if not CRG_REGISTRY_PATH.exists():
+        return []
+    try:
+        reg = json.loads(CRG_REGISTRY_PATH.read_text())
+    except (OSError, json.JSONDecodeError):
+        return []
+    root = root.resolve()
+    results: list[dict[str, Any]] = []
+    for entry in reg.get("repos", []):
+        p = Path(entry.get("path", "")).resolve()
+        if p != root and root in p.parents:
+            alias = entry.get("alias") or str(p)
+            res = _crg_sync("unregister", name=alias)
+            results.append({"alias": alias, "ok": res.get("ok"), "stderr": res.get("stderr", "")})
+    return results
+
+
+def _remove_per_repo_graph_dirs(root: Path) -> list[dict[str, Any]]:
+    """Delete each sub-repo's stale .code-review-graph/ directory. These are
+    CRG-generated and gitignored; the combined graph at the root replaces them."""
+    removed: list[dict[str, Any]] = []
+    for child in sorted(root.iterdir()):
+        graph_dir = child / ".code-review-graph"
+        if child.is_dir() and graph_dir.is_dir():
+            try:
+                shutil.rmtree(graph_dir)
+                removed.append({"path": str(graph_dir), "ok": True})
+            except OSError as e:
+                removed.append({"path": str(graph_dir), "ok": False, "error": str(e)})
+    return removed
+
+
+# ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
 
@@ -297,25 +390,14 @@ def cmd_register(args: argparse.Namespace) -> None:
     data["repos"].append(entry)
     _save_registry(data)
 
-    graph_sync = _crg_sync("register", name=entry["name"], path=entry["path"], skip=args.no_graph_sync)
-
-    # Only build/install if the register actually landed in CRG — otherwise both
-    # downstream steps will fail for the same reason as the sync.
-    if args.no_graph_sync or not graph_sync.get("ok"):
-        skipped = {"ran": False, "skipped_reason": "graph_sync did not succeed; nothing to do"}
-        graph_build = skipped
-        graph_install = skipped
-    else:
-        graph_build = _crg_build(path=entry["path"], skip=args.no_graph_build)
-        graph_install = _crg_install(path=entry["path"], skip=args.no_graph_install)
-
     print(json.dumps(
         {
             "status": "registered",
             "entry": entry,
-            "graph_sync": graph_sync,
-            "graph_build": graph_build,
-            "graph_install": graph_install,
+            "graph_note": (
+                "Local registry only — the combined workspace graph was not rebuilt. "
+                "Run `registry.py setup-graph` to include this repo in the graph."
+            ),
         },
         indent=2,
     ))
@@ -390,8 +472,63 @@ def cmd_delete(args: argparse.Namespace) -> None:
         _die("not_found", f"No repo named '{args.name}'.")
     data["repos"].pop(idx)
     _save_registry(data)
-    graph_sync = _crg_sync("unregister", name=args.name, skip=args.no_graph_sync)
-    print(json.dumps({"status": "deleted", "removed": entry, "graph_sync": graph_sync}, indent=2))
+    print(json.dumps(
+        {
+            "status": "deleted",
+            "removed": entry,
+            "graph_note": (
+                "The combined workspace graph still contains this repo's files until you "
+                "re-run `registry.py setup-graph`."
+            ),
+        },
+        indent=2,
+    ))
+
+
+def cmd_setup_graph(args: argparse.Namespace) -> None:
+    data = _load_registry()
+    root = _workspace_root(data)
+    alias = args.alias or root.name
+    report = _setup_combined_graph(
+        root,
+        alias=alias,
+        do_install=not args.no_install,
+        do_build=not args.no_build,
+        build_timeout=args.timeout,
+    )
+    print(json.dumps({"status": "graph_setup", **report}, indent=2))
+
+
+def cmd_migrate_graph(args: argparse.Namespace) -> None:
+    if not args.confirm:
+        _die(
+            "confirmation_required",
+            "migrate-graph unregisters every per-repo graph alias and DELETES each repo's "
+            ".code-review-graph/ directory. Pass --confirm after the user agrees.",
+        )
+    data = _load_registry()
+    root = _workspace_root(data)
+    alias = args.alias or root.name
+
+    unregistered = _crg_unregister_under_root(root)
+    removed_dirs = _remove_per_repo_graph_dirs(root)
+    setup = _setup_combined_graph(
+        root,
+        alias=alias,
+        do_install=not args.no_install,
+        do_build=not args.no_build,
+        build_timeout=args.timeout,
+    )
+
+    print(json.dumps(
+        {
+            "status": "graph_migrated",
+            "unregistered_aliases": unregistered,
+            "removed_graph_dirs": removed_dirs,
+            **setup,
+        },
+        indent=2,
+    ))
 
 
 # ---------------------------------------------------------------------------
@@ -407,9 +544,6 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_register = sub.add_parser("register", help="Append a new entry. Reads JSON from stdin.")
-    p_register.add_argument("--no-graph-sync", action="store_true", help="Skip the code-review-graph register call (also skips build and install).")
-    p_register.add_argument("--no-graph-build", action="store_true", help="Run register in CRG but skip the slower full graph build.")
-    p_register.add_argument("--no-graph-install", action="store_true", help="Run register/build in CRG but skip the per-repo install (MCP config, hooks, CLAUDE.md injection).")
     p_register.set_defaults(func=cmd_register)
 
     p_list = sub.add_parser("list", help="List all entries.")
@@ -428,8 +562,22 @@ def main() -> None:
     p_delete = sub.add_parser("delete", help="Remove an entry. Requires --confirm.")
     p_delete.add_argument("name")
     p_delete.add_argument("--confirm", action="store_true", help="Required to actually delete.")
-    p_delete.add_argument("--no-graph-sync", action="store_true", help="Skip the code-review-graph unregister call.")
     p_delete.set_defaults(func=cmd_delete)
+
+    p_setup = sub.add_parser("setup-graph", help="Build the combined code-review-graph at the workspace root.")
+    p_setup.add_argument("--alias", help="CRG alias for the workspace root (default: root directory name).")
+    p_setup.add_argument("--no-install", action="store_true", help="Skip `install --platform claude-code` (MCP config, hooks, CLAUDE.md).")
+    p_setup.add_argument("--no-build", action="store_true", help="Register/install only; skip the heavy full build.")
+    p_setup.add_argument("--timeout", type=int, default=1800, help="Build timeout in seconds (default: 1800).")
+    p_setup.set_defaults(func=cmd_setup_graph)
+
+    p_migrate = sub.add_parser("migrate-graph", help="One-time migration from per-repo graphs to the combined graph. Requires --confirm.")
+    p_migrate.add_argument("--confirm", action="store_true", help="Required: unregisters per-repo aliases and deletes per-repo .code-review-graph/ dirs.")
+    p_migrate.add_argument("--alias", help="CRG alias for the workspace root (default: root directory name).")
+    p_migrate.add_argument("--no-install", action="store_true", help="Skip `install --platform claude-code`.")
+    p_migrate.add_argument("--no-build", action="store_true", help="Skip the heavy full build (run setup-graph later).")
+    p_migrate.add_argument("--timeout", type=int, default=1800, help="Build timeout in seconds (default: 1800).")
+    p_migrate.set_defaults(func=cmd_migrate_graph)
 
     args = parser.parse_args()
     args.func(args)

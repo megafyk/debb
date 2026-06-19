@@ -14,7 +14,7 @@ allowed-tools: Read, Grep, Glob, Bash
    - `repos/list_repos.json` — agent writes a verbatim snapshot of `.claude/skills/debug-repo/registry.json` here at step 4.
    - `repos/candidates.md` — agent writes the candidate-selection rationale here at step 4.
    - `plans/<EREQ>.json` — **data-flow step 1**. Written by evidence_gate for both accepted and rejected plans, with `accepted` / `rejection_reason` / `narrowing_applied` metadata. Cite to show what the agent tried and why.
-   - `translations/<EREQ>.json` — **step 2**. Written by evidence_gate when an accepted plan is translated into a source query (Lucene shape or matched Metabase template). `value_ref` placeholders preserved; resolved sensitive values are never written.
+   - `translations/<EREQ>.json` — **step 2**. Written by evidence_gate when an accepted plan is translated into a source query (Lucene filter shape, or the Metabase native-query `sql_candidate` shape). `value_ref` placeholders preserved; resolved sensitive values are never written.
    - `executions/<EREQ>.json` — **step 3**. Written after the connector runs. Carries hit/row counts and the `EREQ → EVID` link.
    - `evidence/<EVID>.jsonl` — **step 4**. Redacted hits/rows, one record per line. EREQ → EVID is in `executions/<EREQ>.json`.
    - `service_repo_map.md`, `debug_report.md` — agent-authored.

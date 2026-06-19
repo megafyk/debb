@@ -15,10 +15,13 @@
 - query_intent describing what diagnostic facts are needed
 - facts_requested list
 - output_profile name
+- For a live query: `sql_candidate` (an agent-authored native query) and `database_id` — evidence_gate rejects the query without them
+- `schema`, when set, must be a bare SQL identifier (`[A-Za-z_][A-Za-z0-9_]*`) — anything else is rejected before execution
+- Results are capped at 500 rows; design aggregating / `LIMIT`-bearing queries rather than expecting full table dumps
 
 ## Plans must not include
 - Raw sensitive values (use value_ref instead)
-- SELECT * queries
+- `SELECT *` or mutating SQL (DROP/TRUNCATE/DELETE/ALTER/CREATE/INSERT/UPDATE), `UNION SELECT`, `INTO OUTFILE`, `LOAD_FILE` — the safety gate rejects these
 - Unbounded time windows
 - Missing service context
 
@@ -27,7 +30,7 @@
 
 ## Three-stage strategy — Quickwit only (see `prompts/quickwit_query_planning.md`)
 
-Does NOT apply to Metabase. Metabase plans target registered SQL templates by `entity` + `facts_requested` and have no request journey to correlate.
+Does NOT apply to Metabase. A Metabase plan carries one agent-authored `sql_candidate` (native query) and has no request journey to correlate.
 
 - **Stage 1** narrows by error string + level + env + masked user input to find the failing request and surface correlation IDs in `masked_data.correlation_ids`.
 - **Stage 2** pulls the full journey by `contextMap.traceId` (no level filter, no instance filter — cross-service).

@@ -18,7 +18,10 @@ Submit a Quickwit query plan for execution.
 - **Output**: Evidence request ID and status
 
 ### create_metabase_evidence_request
-Submit a Metabase query plan for execution.
+Submit a Metabase query plan for execution. The plan carries an agent-authored
+`sql_candidate` (a native query) plus `params`; there is no template registry.
+evidence_gate gates it (rejects `SELECT *`, mutating statements, and any `schema`
+that is not a bare identifier) and caps results at 500 rows.
 - **Input**: MetabaseQueryPlan object
 - **Output**: Evidence request ID and status
 
@@ -31,11 +34,6 @@ Check the status of an evidence request.
 Retrieve the masked evidence package for a completed request.
 - **Input**: `evidence_id` (string)
 - **Output**: MaskedEvidencePackage. For Quickwit packages, `masked_data.correlation_ids` is a `{field: [unique_values]}` map covering `contextMap.traceId`, `contextMap.correlationID`, `contextMap.requestID`, `requestID`, `sessionID` — pick the first non-empty key to drive the next-stage correlation query.
-
-### list_evidence_templates
-List the registered Metabase query templates that `MetabaseQueryPlan` can target.
-- **Input**: none
-- **Output**: `{templates: [{template_id, entity, description, param_names, facts_produced}]}`
 
 ### submit_debug_report
 Submit a completed debug report.

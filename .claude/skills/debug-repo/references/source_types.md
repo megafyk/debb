@@ -43,7 +43,7 @@ Metabase is the BI tool used by debug-jira to plan SQL queries against applicati
 }
 ```
 
-**Consumer contract:** debug-jira reads `database_id` + `schema` from the matching source and copies them into the `MetabaseQueryPlan` it submits to evidence_gate. evidence_gate's connector then puts `database_id` in the `database` field of the `/api/dataset` body and substitutes `{schema}` placeholders in any registered template SQL.
+**Consumer contract:** debug-jira reads `database_id` + `schema` from the matching source and copies them into the `MetabaseQueryPlan` it submits to evidence_gate. evidence_gate's connector then puts `database_id` in the `database` field of the `/api/dataset` body and substitutes the `{schema}` placeholder in the plan's agent-authored `sql_candidate` (`schema` must be a bare SQL identifier).
 
 ## prometheus
 

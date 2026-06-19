@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 
@@ -7,6 +8,14 @@ from dataclasses import dataclass
 class CheckResult:
     ok: bool
     errors: list[str]
+
+
+# Filter field names are concatenated unescaped into the Lucene query string by
+# the connector (`f"{field}:..."`). Restrict them to an identifier shape (dots
+# for nested fields, `/` for k8s label keys, `-` for hyphenated names) so a
+# crafted field like `level:error OR service` can't inject top-level Lucene and
+# widen the query beyond the validated filters.
+_QW_FIELD_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_./-]*$")
 
 
 def check_quickwit_plan(plan: dict) -> CheckResult:
@@ -29,6 +38,11 @@ def check_quickwit_plan(plan: dict) -> CheckResult:
         errors.append("missing filters")
     if not plan.get("fields_requested"):
         errors.append("missing fields_requested")
+
+    for f in plan.get("filters", []):
+        field = f.get("field", "") if isinstance(f, dict) else ""
+        if not field or not _QW_FIELD_RE.match(field):
+            errors.append(f"invalid filter field name: {field!r}")
 
     max_hits = plan.get("max_hits", 0)
     if not isinstance(max_hits, int) or max_hits < 1 or max_hits > 1000:

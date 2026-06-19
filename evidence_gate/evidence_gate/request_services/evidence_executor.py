@@ -5,6 +5,7 @@ from evidence_gate.connectors.metabase_connector import MetabaseConnector
 from evidence_gate.connectors.quickwit_connector import QuickwitConnector
 from evidence_gate.contracts import MaskedEvidencePackage
 from evidence_gate.contracts import MetabaseQueryPlan, QuickwitQueryPlan
+from evidence_gate.request_services.bounds_checker import MAX_METABASE_ROWS
 from evidence_gate.redaction.db_redactor import (
     build_masked_db_package,
     extract_diagnostic_features,
@@ -113,8 +114,9 @@ async def execute_quickwit_request(
 
         # Step 2: log the redacted translation BEFORE we hit the source. The
         # plan structure is the translation shape; value_ref placeholders are
-        # kept verbatim. Skip silently if the folder label can't be built —
-        # logging is best-effort, not gating.
+        # kept verbatim. The folder label is required — evidence is stored under
+        # it below — so a missing/incomplete session fails the request here
+        # (caught as a connector failure) rather than being skippable.
         folder_id = _resolve_debug_report_folder(session_store, evidence_session_id)
         debug_report_evidence_store.store_translation(
             folder_id, request_id, _build_quickwit_translation(plan),
@@ -206,7 +208,9 @@ async def execute_metabase_request(
         request_store.transition(request_id, "connector_running")
         plan = MetabaseQueryPlan.model_validate(request.plan)
 
-        # Step 2: log the redacted translation before hitting the source.
+        # Step 2: log the redacted translation before hitting the source. The
+        # folder label is required (evidence is stored under it below), so a
+        # missing/incomplete session fails the request here.
         folder_id = _resolve_debug_report_folder(session_store, evidence_session_id)
         debug_report_evidence_store.store_translation(
             folder_id, request_id, _build_metabase_translation(plan),
@@ -217,14 +221,22 @@ async def execute_metabase_request(
         raw_store.store(request_id, raw_rows)
         request_store.transition(request_id, "raw_evidence_stored")
 
+        # Cap the rows that reach redaction/the agent: Metabase plans carry no
+        # row limit, so without this a column-named SELECT (which clears the
+        # SELECT*/mutating gates) could enumerate a whole table into the masked
+        # package. The full raw set is still kept server-side in raw_store.
+        total_rows = len(raw_rows)
+        truncated = total_rows > MAX_METABASE_ROWS
+        bounded_rows = raw_rows[:MAX_METABASE_ROWS] if truncated else raw_rows
+
         request_store.transition(request_id, "redaction_running")
-        redacted = redact_db_rows(raw_rows)
-        features = extract_diagnostic_features(raw_rows, plan.entity)
+        redacted = redact_db_rows(bounded_rows)
+        features = extract_diagnostic_features(bounded_rows, plan.entity)
 
         audit_event = audit_logger.log(
             evidence_session_id,
             "masked_package_built",
-            {"request_id": request_id, "row_count": len(raw_rows)},
+            {"request_id": request_id, "row_count": len(bounded_rows)},
         )
 
         package = build_masked_db_package(
@@ -245,7 +257,9 @@ async def execute_metabase_request(
             "evidence_request_id": request_id,
             "source_type": "metabase_dataset",
             "is_live": metabase_connector.is_live,
-            "row_count": len(raw_rows),
+            "row_count": len(bounded_rows),
+            "rows_available": total_rows,
+            "truncated": truncated,
             "entity": plan.entity,
             "evidence_id": package.evidence_id,
         })

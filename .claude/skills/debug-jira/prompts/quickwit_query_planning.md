@@ -6,9 +6,9 @@ identified by `datasource_uid`.
 
 **Scope:** the strategy below is Quickwit-only. It targets the request
 journey across log emitters and depends on log-shaped fields (`message`,
-`level`, `contextMap.*`, kubernetes labels). Metabase plans run registered
-SQL templates against application databases — they don't have a journey to
-correlate, so do not port any of this to `prompts/metabase_query_planning.md`.
+`level`, `contextMap.*`, kubernetes labels). Metabase plans run an agent-authored
+`sql_candidate` (native query) against application databases — they don't have a
+journey to correlate, so do not port any of this to `prompts/metabase_query_planning.md`.
 
 ## Three-stage strategy
 
